@@ -1,0 +1,19 @@
+<div class="portal-doc-article">
+  <h3>Stack observabilité</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Outil</th><th>Accès</th><th>Usage SOC</th></tr></thead>
+    <tbody>
+      <tr><td>Grafana</td><td>/grafana/</td><td>Santé cluster, ingest, CTI, alerting</td></tr>
+      <tr><td>Prometheus</td><td>interne :9090</td><td>Métriques scrape conteneurs</td></tr>
+      <tr><td>Loki</td><td>via Grafana</td><td>Logs agrégés</td></tr>
+      <tr><td>Tempo</td><td>via Grafana</td><td>Traces</td></tr>
+      <tr><td>OpenSearch Dashboards</td><td>/dashboards/</td><td>Recherche événements, Discover</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Dashboards pré-provisionnés</h3>
+  <p>Activation via <code>grafana_master_setup.py</code> : cumul documents OpenSearch, santé indices, volumétrie ingest, connecteurs CTI. Référence FP-Master dans les UID dashboards.</p>
+
+  <h3>Alerting portail</h3>
+  <p>Module <code>portal-alerting.js</code> — drawer alertes ingest (baisses volumétrie Sekoia ≥50 %). KPI <strong>CLUSTER OPENSEARCH</strong> sur la vue d'ensemble.</p>
+</div>

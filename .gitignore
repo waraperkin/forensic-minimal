@@ -1,0 +1,9 @@
+.env
+logs/
+node_modules/
+tests/node_modules/
+tests/test-results/
+tests/reports/
+tests/.auth/.setup.lock
+*.log
+.DS_Store

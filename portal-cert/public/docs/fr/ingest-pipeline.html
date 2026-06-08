@@ -1,0 +1,41 @@
+<div class="portal-doc-article">
+  <h3>Chaîne d'ingestion</h3>
+  <pre class="portal-doc-diagram">Portail CERT (/upload) ou IT (/it/?token=)
+        │
+        ▼
+   cert-portal / it-portal
+   ├─ Validation extension &amp; taille (upload-limits.js)
+   ├─ Stockage MinIO (bucket par type)
+   └─ Job Redis → ingest-queue
+        │
+        ▼
+   ingest-worker (Python)
+   ├─ forensic_parsers (EVTX, texte, CSV…)
+   ├─ Bulk OpenSearch (indices forensic-*)
+   ├─ timesketch_pipeline (CSV 9 colonnes)
+   └─ ACK / erreurs → /api/master/ingest-errors</pre>
+
+  <h3>Types de fichiers</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Extension</th><th>Destination</th><th>Traitement</th></tr></thead>
+    <tbody>
+      <tr><td>evtx, evt</td><td>logs-windows + OS</td><td>Parse Windows events</td></tr>
+      <tr><td>plaso, csv, jsonl</td><td>timesketch</td><td>Import timeline Timesketch</td></tr>
+      <tr><td>log, txt, syslog</td><td>logs-linux + OS</td><td>Indexation texte</td></tr>
+      <tr><td>pcap, pcapng</td><td>pcap (MinIO)</td><td>Stockage binaire</td></tr>
+      <tr><td>stix</td><td>iocs</td><td>IOC / corrélation CTI</td></tr>
+      <tr><td>zip</td><td>kape</td><td>Archive KAPE</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Logstash &amp; Filebeat</h3>
+  <p><strong>Logstash</strong> écoute :5044 (Beats), :5045 (JSON), :5140/udp (syslog), :5555 (HEC). <strong>Filebeat</strong> collecte les logs conteneurs Docker vers OpenSearch.</p>
+
+  <h3>Supervision ingest</h3>
+  <ul>
+    <li>Onglet <strong>Ingestion &amp; Evidences</strong> — volumes et historique</li>
+    <li>KPI <strong>Ingest Total</strong> sur la vue d'ensemble</li>
+    <li>Grafana — dashboard cumul documents OpenSearch</li>
+    <li><code>/api/master/ingest</code> — métadonnées uploads</li>
+  </ul>
+</div>

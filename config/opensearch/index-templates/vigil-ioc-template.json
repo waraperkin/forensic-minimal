@@ -1,0 +1,27 @@
+{
+  "index_patterns": ["vigil-ioc-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "id": { "type": "keyword" },
+        "type": { "type": "keyword" },
+        "value": { "type": "keyword" },
+        "confidence": { "type": "integer" },
+        "tags": { "type": "keyword" },
+        "first_seen": { "type": "date" },
+        "last_seen": { "type": "date" },
+        "source": { "type": "keyword" },
+        "_source_platform": { "type": "keyword" },
+        "_collection": { "type": "keyword" },
+        "vigil_kind": { "type": "keyword" }
+      }
+    }
+  },
+  "priority": 210
+}

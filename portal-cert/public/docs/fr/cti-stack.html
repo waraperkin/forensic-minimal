@@ -1,0 +1,26 @@
+<div class="portal-doc-article">
+  <h3>Hub Threat Intelligence</h3>
+  <p>OpenCTI est le pivot CTI : entités STIX, relations, connecteurs, dashboards. MISP partage les IOC ; TheHive gère les cas ; Cortex exécute les analyseurs.</p>
+
+  <h3>Composants</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Outil</th><th>URL portail</th><th>Rôle analyste</th></tr></thead>
+    <tbody>
+      <tr><td>OpenCTI</td><td>/cti/</td><td>Entités, campagnes, vulnérabilités, graph</td></tr>
+      <tr><td>MISP</td><td>/misp/</td><td>Events, attributs IOC, galaxie MITRE</td></tr>
+      <tr><td>TheHive</td><td>/thehive/</td><td>Cas, observables, tâches</td></tr>
+      <tr><td>Cortex</td><td>/cortex/</td><td>Analyseurs (hash, domaine, sandbox)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Connecteurs OpenCTI</h3>
+  <p>Profils Docker : connecteurs MITRE ATT&amp;CK, CVE, datasets OpenCTI. Population TI via <code>opencti_master_setup.py</code> en FULL-BOOT.</p>
+
+  <h3>Intégration portail CERT</h3>
+  <ul>
+    <li><strong>Renseignement menace (CTI)</strong> — synthèse IOC, connecteurs, heatmap</li>
+    <li>KPI <strong>IOC Total</strong> — cumul index OpenCTI + MISP</li>
+    <li><strong>IOC Correlation</strong> — recherche IP/domaine/hash multi-plateformes</li>
+    <li>Exports Assistant SOC — pivots CTI (validation manuelle)</li>
+  </ul>
+</div>

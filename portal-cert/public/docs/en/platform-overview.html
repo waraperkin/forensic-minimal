@@ -1,0 +1,13 @@
+<div class="portal-doc-article">
+  <p class="portal-doc-lead">The <strong>CYBERCORP Forensic v2.1</strong> platform is an integrated SOC/CERT ecosystem: analyst portals, forensic ingestion, OpenSearch search, Timesketch investigation, CTI (OpenCTI, MISP, TheHive, Cortex), detection (Sekoia.IO, SentinelOne) and observability (Grafana, Prometheus, Loki).</p>
+  <h3>Functional scope</h3>
+  <div class="portal-doc-card-grid">
+    <div class="portal-doc-card"><strong>Portals</strong><p>CERT (<code>/</code>) and IT (<code>/it/</code>) — upload, tokens, incidents.</p></div>
+    <div class="portal-doc-card"><strong>Ingestion</strong><p>Python worker: EVTX/CSV/Plaso → OpenSearch + Timesketch + MinIO.</p></div>
+    <div class="portal-doc-card"><strong>Search</strong><p>OpenSearch 2-node cluster, Dashboards, Logstash, Filebeat.</p></div>
+    <div class="portal-doc-card"><strong>Investigation</strong><p>Timesketch timelines, CERT tools (IOC, timeline builder, XDR view).</p></div>
+    <div class="portal-doc-card"><strong>CTI</strong><p>OpenCTI hub, MISP, TheHive cases, Cortex analyzers.</p></div>
+    <div class="portal-doc-card"><strong>Detection</strong><p>Sekoia &amp; SentinelOne control planes via <code>/api/threat/*</code>.</p></div>
+  </div>
+  <p class="fp-muted">See <strong>Full platform architecture</strong> for detailed service topology and data flows.</p>
+</div>

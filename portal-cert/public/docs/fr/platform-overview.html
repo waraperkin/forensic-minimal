@@ -1,0 +1,41 @@
+<div class="portal-doc-article">
+  <p class="portal-doc-lead">La plateforme <strong>CYBERCORP Forensic v2.1</strong> est un écosystème SOC/CERT intégré : portails analyste, ingestion forensique, recherche OpenSearch, investigation Timesketch, CTI (OpenCTI, MISP, TheHive, Cortex), détection (Sekoia.IO, SentinelOne) et observabilité (Grafana, Prometheus, Loki).</p>
+
+  <h3>Périmètre fonctionnel</h3>
+  <div class="portal-doc-card-grid">
+    <div class="portal-doc-card"><strong>Portails</strong><p>CERT (<code>/</code>) et IT (<code>/it/</code>) — upload, tokens, incidents, supervision.</p></div>
+    <div class="portal-doc-card"><strong>Ingestion</strong><p>Worker Python : parse EVTX/CSV/Plaso → OpenSearch + Timesketch + MinIO.</p></div>
+    <div class="portal-doc-card"><strong>Recherche</strong><p>Cluster OpenSearch 2 nœuds, Dashboards, Logstash, Filebeat.</p></div>
+    <div class="portal-doc-card"><strong>Investigation</strong><p>Timesketch (timelines), outils CERT (IOC, timeline builder, XDR view).</p></div>
+    <div class="portal-doc-card"><strong>CTI</strong><p>OpenCTI hub, MISP, TheHive cas, Cortex analyseurs.</p></div>
+    <div class="portal-doc-card"><strong>Détection</strong><p>Control planes Sekoia &amp; SentinelOne via proxy <code>/api/threat/*</code>.</p></div>
+  </div>
+
+  <h3>Accès HTTPS (via Nginx)</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Service</th><th>Chemin / URL</th><th>Rôle</th></tr></thead>
+    <tbody>
+      <tr><td>Portail CERT</td><td><code>https://&lt;IP&gt;/</code></td><td>Hub opérations analyste</td></tr>
+      <tr><td>Portail IT</td><td><code>https://&lt;IP&gt;/it/?token=…</code></td><td>Dépôt preuves IT (token)</td></tr>
+      <tr><td>OpenSearch Dashboards</td><td><code>/dashboards/</code></td><td>Recherche &amp; visualisations</td></tr>
+      <tr><td>Grafana</td><td><code>/grafana/</code></td><td>Dashboards SOC / santé</td></tr>
+      <tr><td>OpenCTI</td><td><code>/cti/</code></td><td>Threat intelligence hub</td></tr>
+      <tr><td>TheHive</td><td><code>/thehive/</code></td><td>Gestion cas / incidents</td></tr>
+      <tr><td>MISP</td><td><code>/misp/</code> ou :8090</td><td>Partage IOC</td></tr>
+      <tr><td>Cortex</td><td><code>/cortex/</code> ou :9003</td><td>Analyseurs automatisés</td></tr>
+      <tr><td>Timesketch</td><td><code>/timesketch/</code></td><td>Timelines forensiques</td></tr>
+      <tr><td>MinIO</td><td><code>/minio/</code></td><td>Stockage objets / preuves</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Démarrage &amp; maintenance</h3>
+  <ul>
+    <li><code>./forensic.sh start</code> — démarrage rapide (FAST-BOOT)</li>
+    <li><code>./forensic.sh full-start</code> — activation complète (playbooks, dashboards, CTI)</li>
+    <li><code>./forensic.sh urls</code> — liste des accès et credentials de labo</li>
+    <li><code>./forensic.sh fix-data</code> — réparation OpenSearch / mappings</li>
+    <li><code>docker compose build cert-portal &amp;&amp; docker compose up -d cert-portal</code> — mise à jour portail</li>
+  </ul>
+
+  <p class="fp-muted">Consultez la section <strong>Architecture complète</strong> pour le schéma détaillé des services, flux de données et dépendances Docker.</p>
+</div>

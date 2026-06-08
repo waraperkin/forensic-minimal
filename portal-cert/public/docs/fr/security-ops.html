@@ -1,0 +1,20 @@
+<div class="portal-doc-article">
+  <h3>Authentification portail</h3>
+  <ul>
+    <li>Comptes locaux (<code>/api/auth/login</code>) — session cookie</li>
+    <li>MFA TOTP (<code>/api/auth/mfa</code>) pour comptes activés</li>
+    <li>Rôles : <code>admin</code>, analyste — panneaux <code>data-admin-only</code> masqués</li>
+    <li>Journal d'activité — chaque login/upload/modification tracé</li>
+  </ul>
+
+  <h3>Secrets &amp; connecteurs</h3>
+  <ul>
+    <li>Secrets Sekoia/S1 : chiffrés dans volume control plane (<code>/data</code>)</li>
+    <li>Pas de stockage JWT/API keys dans <code>.env</code> côté navigateur</li>
+    <li>Centre d'accès — credentials admin uniquement (référence labo)</li>
+    <li>TLS auto-signé — fingerprint affiché dans Santé IT</li>
+  </ul>
+
+  <h3>Mode démo</h3>
+  <p>Active depuis Documentation : bloque <code>delete</code>, <code>purge</code>, <code>regenerate</code> — utile pour formation sans risque d'écriture.</p>
+</div>

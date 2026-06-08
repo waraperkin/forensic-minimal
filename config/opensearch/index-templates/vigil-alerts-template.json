@@ -1,0 +1,27 @@
+{
+  "index_patterns": ["vigil-alerts-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "id": { "type": "keyword" },
+        "title": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "severity": { "type": "keyword" },
+        "status": { "type": "keyword" },
+        "host": { "type": "keyword" },
+        "rule": { "type": "keyword" },
+        "source": { "type": "keyword" },
+        "_source_platform": { "type": "keyword" },
+        "_collection": { "type": "keyword" },
+        "vigil_kind": { "type": "keyword" },
+        "ioc_count": { "type": "integer" }
+      }
+    }
+  },
+  "priority": 210
+}

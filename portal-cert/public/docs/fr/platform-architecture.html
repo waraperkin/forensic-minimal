@@ -1,0 +1,187 @@
+<div class="portal-doc-article portal-doc-arch">
+  <p class="portal-doc-lead">Architecture de référence de la plateforme forensic CYBERCORP — réseau Docker <code>forensic-net</code> (<code>172.25.0.0/16</code>), reverse proxy Nginx TLS, 30+ services orchestrés par <code>docker-compose.yml</code>.</p>
+
+  <h3>1. Vue macro — couches</h3>
+  <pre class="portal-doc-diagram">┌─────────────────────────────────────────────────────────────────────────────┐
+│  ANALYSTES / IT                                                             │
+│  Navigateur HTTPS ──► Nginx :443 (forensic-nginx)                           │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        ▼                           ▼                           ▼
+ ┌──────────────┐          ┌──────────────┐          ┌──────────────────┐
+ │ cert-portal  │          │  it-portal   │          │ Services SOC     │
+ │ Node :3000   │          │  Node :3001  │          │ (proxy paths)    │
+ │ /api/*       │          │  /it/        │          │ OSD, GF, CTI, TS │
+ └──────┬───────┘          └──────┬───────┘          └────────┬─────────┘
+        │                         │                            │
+        └────────────┬────────────┴────────────────────────────┘
+                     ▼
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │  COUCHE DONNÉES &amp; TRAITEMENT                                            │
+ │  Redis (queue) · MinIO (objets) · ingest-worker · OpenSearch · Timesketch │
+ │  Postgres · RabbitMQ · Cassandra (TheHive)                                │
+ └───────────────────────────────────┬──────────────────────────────────────┘
+                                     ▼
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │  COUCHE CTI &amp; DÉTECTION EXTERNE                                          │
+ │  OpenCTI + connecteurs · MISP · TheHive · Cortex                          │
+ │  sekoia-controlplane :8081 · sentinelone-controlplane :8082               │
+ └───────────────────────────────────┬──────────────────────────────────────┘
+                                     ▼
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │  OBSERVABILITÉ — Prometheus · Grafana · Loki · Tempo · Filebeat · Logstash│
+ └──────────────────────────────────────────────────────────────────────────┘</pre>
+
+  <h3>2. Routage Nginx (point d'entrée unique)</h3>
+  <p>Tout le trafic analyste transite par <strong>forensic-nginx</strong> (TLS auto-signé). Les upstreams principaux :</p>
+  <table class="portal-doc-table">
+    <thead><tr><th>Chemin public</th><th>Upstream</th><th>Service cible</th></tr></thead>
+    <tbody>
+      <tr><td><code>/</code></td><td>cert-portal:3000</td><td>Portail CERT + API REST</td></tr>
+      <tr><td><code>/it/</code></td><td>it-portal:3001</td><td>Portail IT (upload token)</td></tr>
+      <tr><td><code>/dashboards/</code></td><td>opensearch-dashboards:5601</td><td>OpenSearch Dashboards</td></tr>
+      <tr><td><code>/grafana/</code></td><td>grafana:3000</td><td>Grafana OSS</td></tr>
+      <tr><td><code>/cti/</code></td><td>opencti:8080</td><td>OpenCTI platform</td></tr>
+      <tr><td><code>/thehive/</code></td><td>thehive:9000</td><td>TheHive 5</td></tr>
+      <tr><td><code>/misp/</code></td><td>misp:80</td><td>MISP core</td></tr>
+      <tr><td><code>/timesketch/</code> + <code>/api/v1/</code></td><td>timesketch-web:5000</td><td>Timesketch (SPA)</td></tr>
+      <tr><td><code>/minio/</code></td><td>minio:9001</td><td>Console MinIO</td></tr>
+      <tr><td><code>/cortex/</code></td><td>cortex:9001</td><td>Cortex</td></tr>
+      <tr><td><code>/shared/</code></td><td>cert-portal (statique)</td><td>Assets portail partagés</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3. Portail CERT — architecture applicative</h3>
+  <pre class="portal-doc-diagram">Navigateur
+   │
+   ├─► HTML/JS/CSS statiques (portal-shared → /shared/)
+   │
+   ├─► /api/auth/*        Session cookie, MFA TOTP, rôles admin/analyste
+   ├─► /api/overview/*    Santé services, ingest stats, CTI summary
+   ├─► /api/master/*      Incidents, KB, dashboards FP-Master
+   ├─► /api/upload        Dépôt evidence → MinIO + queue Redis
+   ├─► /api/audit/events  Journal d'activité (modifications plateforme)
+   │
+   └─► /api/threat/*      Proxy Node → control planes
+         ├─► sekoia-controlplane:8081   (intakes, règles, fetch, CC)
+         └─► sentinelone-controlplane:8082 (agents, policies, DV)</pre>
+  <p>Chargement JS modulaire via <code>portal-lazy.js</code> : threat-platforms, governance, cert-tools, sekoia-cc, portal-doc, portal-ai.</p>
+
+  <h3>4. Pipeline d'ingestion forensique</h3>
+  <pre class="portal-doc-diagram">Upload CERT/IT (multer)
+      │
+      ├─► MinIO (bucket par type: logs-windows, timesketch, pcap, iocs…)
+      ├─► Redis LPUSH ingest-queue
+      │
+      ▼
+ ingest-worker (Python)
+      ├─ Parse EVTX / texte / CSV / Plaso
+      ├─ Bulk index OpenSearch (forensic-*, fp-threat-*)
+      ├─ timesketch_pipeline → CSV 9 colonnes → Timesketch API
+      └─ Métadonnées ingest → /api/master/ingest</pre>
+  <p><strong>Types supportés :</strong> EVTX, EVT, LOG, syslog, Plaso, CSV, JSONL, PCAP, STIX, ZIP/KAPE… Voir onglet Upload pour limites (100 fichiers, 5.4 Go/fichier).</p>
+  <p><strong>Logstash</strong> (ports 5044 Beats, 5045 JSON, 5140 syslog, 5555 HEC) alimente également OpenSearch pour les flux réseau/SIEM.</p>
+
+  <h3>5. Cluster OpenSearch</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Conteneur</th><th>Rôle</th><th>Volume</th></tr></thead>
+    <tbody>
+      <tr><td>forensic-opensearch-1</td><td>Nœud master/data</td><td>opensearch-data1</td></tr>
+      <tr><td>forensic-opensearch-2</td><td>Nœud data</td><td>opensearch-data2</td></tr>
+      <tr><td>forensic-opensearch-dashboards</td><td>UI recherche</td><td>—</td></tr>
+      <tr><td>forensic-opensearch-init</td><td>Templates, ISM, mappings</td><td>—</td></tr>
+      <tr><td>forensic-logstash</td><td>Ingestion pipeline</td><td>logstash-data</td></tr>
+      <tr><td>forensic-filebeat</td><td>Logs conteneurs → OS</td><td>—</td></tr>
+    </tbody>
+  </table>
+  <p>Indices typiques : <code>forensic-windows-*</code>, <code>forensic-endpoint-*</code>, <code>fp-threat-hunts</code>, <code>fp-threat-ioc</code>. Santé cluster visible dans Vue d'ensemble (KPI GREEN/YELLOW/RED).</p>
+
+  <h3>6. Stack CTI &amp; réponse</h3>
+  <pre class="portal-doc-diagram">OpenCTI (hub)
+   ├─ Connecteurs MITRE, CVE, datasets (docker-compose.opencti.yml)
+   ├─ Stockage : Postgres, Redis, RabbitMQ, MinIO, OpenSearch
+   │
+MISP ◄──► OpenCTI (sync IOC)
+TheHive ◄──► Cortex (analyseurs)
+   └─ Cassandra + MinIO (artefacts)</pre>
+
+  <h3>7. Timesketch</h3>
+  <ul>
+    <li><strong>forensic-timesketch-web</strong> — UI + API REST</li>
+    <li><strong>forensic-timesketch-worker</strong> — Celery (import timelines)</li>
+    <li><strong>forensic-timesketch-init</strong> — bootstrap utilisateurs/sketches</li>
+    <li>Import automatique depuis ingest-worker ; export manuel depuis outils CERT / Sekoia fetch</li>
+  </ul>
+
+  <h3>8. Control planes détection (CYBERCORP)</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Service</th><th>Port</th><th>Fonction</th></tr></thead>
+    <tbody>
+      <tr><td>cybercorp-sekoia-controlplane</td><td>8081</td><td>API Sekoia : intakes, règles Sigma, clés, fetch events, inventaire CC</td></tr>
+      <tr><td>cybercorp-sentinelone-controlplane</td><td>8082</td><td>API S1 : endpoints, policies, threats, Deep Visibility</td></tr>
+    </tbody>
+  </table>
+  <p>Secrets connecteurs stockés chiffrés dans <code>sekoia-cp-data</code> — jamais en clair dans <code>.env</code> côté UI.</p>
+
+  <h3>9. Observabilité</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Composant</th><th>Rôle</th></tr></thead>
+    <tbody>
+      <tr><td>Prometheus</td><td>Métriques conteneurs &amp; exporters</td></tr>
+      <tr><td>Grafana</td><td>Dashboards SOC (cumul OpenSearch, santé services, ingest)</td></tr>
+      <tr><td>Loki</td><td>Agrégation logs</td></tr>
+      <tr><td>Tempo</td><td>Traces distribuées</td></tr>
+      <tr><td>Portainer :9443</td><td>Administration Docker (hors Nginx)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>10. Inventaire complet des services Docker</h3>
+  <table class="portal-doc-table portal-doc-table-compact">
+    <thead><tr><th>Conteneur</th><th>Image / build</th><th>Dépendances clés</th></tr></thead>
+    <tbody>
+      <tr><td>forensic-nginx</td><td>nginx:1.25-alpine</td><td>cert-portal, it-portal, tous upstreams</td></tr>
+      <tr><td>forensic-cert-portal</td><td>fp-final2-cert-portal</td><td>redis, opensearch, minio</td></tr>
+      <tr><td>forensic-it-portal</td><td>fp-final2-it-portal</td><td>redis, minio</td></tr>
+      <tr><td>forensic-ingest-worker</td><td>build local</td><td>redis, opensearch, minio, timesketch</td></tr>
+      <tr><td>forensic-postgres</td><td>postgres:15</td><td>OpenCTI, Timesketch metadata</td></tr>
+      <tr><td>forensic-redis</td><td>redis:7</td><td>Queues, cache, OpenCTI</td></tr>
+      <tr><td>forensic-rabbitmq</td><td>rabbitmq:3.12</td><td>OpenCTI workers</td></tr>
+      <tr><td>forensic-minio</td><td>minio</td><td>Objets preuves, OpenCTI</td></tr>
+      <tr><td>forensic-opensearch-1/2</td><td>opensearch 2.12</td><td>Cluster SIEM</td></tr>
+      <tr><td>forensic-opencti</td><td>opencti 6.2</td><td>postgres, redis, rabbitmq, minio, OS</td></tr>
+      <tr><td>forensic-misp</td><td>misp-core</td><td>misp-db (MariaDB)</td></tr>
+      <tr><td>forensic-thehive</td><td>thehive 5.3</td><td>cassandra, minio</td></tr>
+      <tr><td>forensic-cortex</td><td>cortex 3.2</td><td>thehive (jobs)</td></tr>
+      <tr><td>forensic-grafana</td><td>grafana 10.4</td><td>prometheus, loki</td></tr>
+      <tr><td>forensic-prometheus</td><td>prometheus</td><td>—</td></tr>
+      <tr><td>forensic-loki / tempo</td><td>grafana stack</td><td>—</td></tr>
+      <tr><td>cybercorp-sekoia-controlplane</td><td>build local</td><td>sekoia-cp-data volume</td></tr>
+      <tr><td>cybercorp-sentinelone-controlplane</td><td>build local</td><td>secrets chiffrés</td></tr>
+    </tbody>
+  </table>
+
+  <h3>11. Volumes persistants</h3>
+  <p>Données survivant aux <code>docker compose down</code> (sans <code>-v</code>) : <code>opensearch-data1/2</code>, <code>minio-data</code>, <code>postgres-data</code>, <code>timesketch-data</code>, <code>opencti-data</code>, <code>misp-*</code>, <code>thehive-data</code>, <code>cassandra-data</code>, <code>cert-portal-uploads</code>, <code>shared-uploads</code>, <code>sekoia-cp-data</code>, <code>grafana-data</code>, <code>prometheus-data</code>, <code>loki-data</code>, <code>tempo-data</code>.</p>
+
+  <h3>12. Flux de corrélation analyste (cas d'usage)</h3>
+  <ol>
+    <li>Alerte Sekoia / incident FP-Master → fiche dans portail CERT</li>
+    <li>Collecte ciblée Sekoia fetch ou S1 DV sur l'asset</li>
+    <li>Investigation asset / XDR View — corrélation multi-source</li>
+    <li>Timeline Builder → export Timesketch</li>
+    <li>IOC → corrélation OpenCTI/MISP + règles</li>
+    <li>Centre d'audit — traçabilité des modifications</li>
+  </ol>
+
+  <h3>13. Sécurité réseau &amp; session</h3>
+  <ul>
+    <li>TLS terminé sur Nginx ; HSTS activé</li>
+    <li>Session portail : cookie HttpOnly, MFA TOTP optionnel</li>
+    <li>Portail IT : accès par token à usage limité (dépôt preuves)</li>
+    <li>API threat : Bearer JWT Sekoia (durée ~15 min) saisi dans Configuration</li>
+    <li>Mode démo documentation : bloque purge/delete/regenerate</li>
+  </ul>
+
+  <p class="fp-muted portal-doc-version">Référence docker-compose v2.1 — réseau <code>172.25.0.0/16</code>. Schéma aligné sur <code>config/nginx/conf.d/forensic.conf</code> et <code>LOG_FORENSIC_PLATFORM_REBUILD.md</code>.</p>
+</div>

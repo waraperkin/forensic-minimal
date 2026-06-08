@@ -1,0 +1,87 @@
+<div class="portal-doc-article portal-doc-arch">
+  <p class="portal-doc-lead">Reference architecture — Docker network <code>forensic-net</code> (<code>172.25.0.0/16</code>), Nginx TLS reverse proxy, 30+ services in <code>docker-compose.yml</code>.</p>
+
+  <h3>1. Macro view — layers</h3>
+  <pre class="portal-doc-diagram">Browser HTTPS ──► Nginx :443 (forensic-nginx)
+        │
+   ┌────┴────┬──────────────┬─────────────────┐
+   ▼         ▼              ▼                 ▼
+cert-portal  it-portal   SOC services    /api/threat/*
+ :3000       :3001       (OSD, GF, CTI)   → CP :8081/:8082
+        │
+        ▼
+Data layer: Redis · MinIO · ingest-worker · OpenSearch · Timesketch
+            Postgres · RabbitMQ · Cassandra
+        ▼
+CTI: OpenCTI + connectors · MISP · TheHive · Cortex
+        ▼
+Observability: Prometheus · Grafana · Loki · Tempo · Logstash · Filebeat</pre>
+
+  <h3>2. Nginx routing</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Public path</th><th>Upstream</th><th>Target</th></tr></thead>
+    <tbody>
+      <tr><td><code>/</code></td><td>cert-portal:3000</td><td>CERT portal + REST API</td></tr>
+      <tr><td><code>/it/</code></td><td>it-portal:3001</td><td>IT portal (token upload)</td></tr>
+      <tr><td><code>/dashboards/</code></td><td>opensearch-dashboards:5601</td><td>OpenSearch Dashboards</td></tr>
+      <tr><td><code>/grafana/</code></td><td>grafana:3000</td><td>Grafana</td></tr>
+      <tr><td><code>/cti/</code></td><td>opencti:8080</td><td>OpenCTI</td></tr>
+      <tr><td><code>/thehive/</code></td><td>thehive:9000</td><td>TheHive 5</td></tr>
+      <tr><td><code>/timesketch/</code></td><td>timesketch-web:5000</td><td>Timesketch</td></tr>
+      <tr><td><code>/api/threat/*</code></td><td>cert-portal proxy</td><td>Sekoia/S1 control planes</td></tr>
+    </tbody>
+  </table>
+
+  <h3>3. CERT portal application</h3>
+  <pre class="portal-doc-diagram">Static assets (/shared/) + lazy JS modules
+/api/auth/* · /api/overview/* · /api/master/*
+/api/upload → MinIO + Redis queue
+/api/threat/* → sekoia-controlplane:8081, s1-controlplane:8082</pre>
+
+  <h3>4. Ingestion pipeline</h3>
+  <pre class="portal-doc-diagram">Upload → MinIO + Redis queue → ingest-worker
+  → OpenSearch bulk · Timesketch CSV import · ingest metadata API</pre>
+
+  <h3>5. OpenSearch cluster</h3>
+  <p>Nodes forensic-opensearch-1/2, Dashboards, init job (templates/mappings), Logstash, Filebeat. Indices: <code>forensic-*</code>, <code>fp-threat-*</code>.</p>
+
+  <h3>6. CTI stack</h3>
+  <p>OpenCTI (Postgres, Redis, RabbitMQ, MinIO, OS) ↔ MISP ↔ TheHive + Cortex (Cassandra).</p>
+
+  <h3>7. Control planes</h3>
+  <table class="portal-doc-table">
+    <thead><tr><th>Service</th><th>Port</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>cybercorp-sekoia-controlplane</td><td>8081</td><td>Sekoia inventories, rules, fetch</td></tr>
+      <tr><td>cybercorp-sentinelone-controlplane</td><td>8082</td><td>S1 agents, policies, threats</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8. Docker inventory</h3>
+  <table class="portal-doc-table portal-doc-table-compact">
+    <thead><tr><th>Container</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>forensic-nginx</td><td>TLS reverse proxy</td></tr>
+      <tr><td>forensic-cert-portal / it-portal</td><td>Node.js portals</td></tr>
+      <tr><td>forensic-ingest-worker</td><td>Parse &amp; index pipeline</td></tr>
+      <tr><td>forensic-opensearch-1/2</td><td>SIEM storage</td></tr>
+      <tr><td>forensic-opencti / misp / thehive / cortex</td><td>CTI &amp; case management</td></tr>
+      <tr><td>forensic-timesketch-web/worker</td><td>Timeline investigation</td></tr>
+      <tr><td>forensic-grafana / prometheus / loki / tempo</td><td>Observability</td></tr>
+      <tr><td>cybercorp-*-controlplane</td><td>External detection APIs</td></tr>
+    </tbody>
+  </table>
+
+  <h3>9. Persistent volumes</h3>
+  <p>opensearch-data1/2, minio-data, postgres-data, timesketch-data, opencti-data, misp-*, thehive-data, cassandra-data, cert-portal-uploads, shared-uploads, sekoia-cp-data, grafana-data, prometheus-data, loki-data, tempo-data.</p>
+
+  <h3>10. Analyst correlation flow</h3>
+  <ol>
+    <li>Sekoia alert / FP-Master incident → CERT portal case</li>
+    <li>Targeted Sekoia fetch or S1 Deep Visibility on asset</li>
+    <li>Asset investigation / XDR View — multi-source correlation</li>
+    <li>Timeline export to Timesketch</li>
+    <li>IOC correlation across OpenCTI/MISP</li>
+    <li>Audit center — change traceability</li>
+  </ol>
+</div>

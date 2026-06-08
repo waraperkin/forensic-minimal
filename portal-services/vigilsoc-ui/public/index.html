@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>VigilSOC Console</title>
+  <style>
+    :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --ok:#3fb950; --warn:#d29922; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+    header { display:flex; align-items:center; gap:1rem; padding:1rem 1.5rem; border-bottom:1px solid var(--border); background:var(--panel); }
+    header h1 { margin:0; font-size:1.25rem; }
+    header p { margin:0; color:var(--muted); font-size:.9rem; }
+    .badge { padding:.2rem .55rem; border-radius:999px; font-size:.75rem; background:#1f6feb33; color:var(--accent); border:1px solid #1f6feb55; }
+    main { padding:1.25rem 1.5rem 2rem; max-width:1200px; margin:0 auto; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; margin-bottom:1.25rem; }
+    .kpi { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:1rem; }
+    .kpi .label { color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; }
+    .kpi .value { font-size:1.6rem; font-weight:700; margin-top:.35rem; }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:1rem; margin-bottom:1rem; }
+    .panel h2 { margin:0 0 .75rem; font-size:1rem; }
+    table { width:100%; border-collapse:collapse; font-size:.88rem; }
+    th, td { text-align:left; padding:.45rem .5rem; border-bottom:1px solid var(--border); }
+    th { color:var(--muted); font-weight:600; }
+    .status-ok { color:var(--ok); }
+    .status-warn { color:var(--warn); }
+    .actions { display:flex; gap:.5rem; flex-wrap:wrap; margin:.75rem 0 1rem; }
+    button, a.btn { background:#21262d; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:.45rem .8rem; cursor:pointer; text-decoration:none; font-size:.85rem; }
+    button:hover, a.btn:hover { border-color:var(--accent); color:var(--accent); }
+    #err { display:none; margin-bottom:1rem; padding:.75rem 1rem; border-radius:8px; background:#3d1f1f; border:1px solid #8b2e2e; color:#ffb4b4; }
+    footer { padding:1rem 1.5rem; color:var(--muted); font-size:.8rem; border-top:1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>VigilSOC Console</h1>
+      <p>Console opérationnelle — alertes, IOC et assets</p>
+    </div>
+    <span class="badge" id="mode-badge">…</span>
+    <a class="btn" href="/" rel="noopener">← Portail CERT</a>
+  </header>
+  <main>
+    <div id="err" role="alert"></div>
+    <div class="actions">
+      <button type="button" id="btn-refresh">Actualiser</button>
+      <a class="btn" href="/api/vigil/health" target="_blank" rel="noopener">API Health</a>
+      <a class="btn" href="/?tab=threat-intel" rel="noopener">CTI portail</a>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="panel">
+      <h2>Alertes VigilSOC</h2>
+      <table><thead><tr><th>Titre</th><th>Sév.</th><th>Host</th><th>Statut</th></tr></thead><tbody id="alerts-tbody"></tbody></table>
+    </div>
+    <div class="panel">
+      <h2>IOC VigilSOC</h2>
+      <table><thead><tr><th>Type</th><th>Valeur</th><th>Conf.</th></tr></thead><tbody id="ioc-tbody"></tbody></table>
+    </div>
+    <div class="panel">
+      <h2>Assets VigilSOC</h2>
+      <table><thead><tr><th>Hostname</th><th>OS</th><th>Agent</th></tr></thead><tbody id="assets-tbody"></tbody></table>
+    </div>
+  </main>
+  <footer>VigilSOC UI — proxy <code>/vigilsoc/</code> · API <code>/api/vigil/*</code></footer>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    async function fetchJson(path) {
+      const r = await fetch(path, { credentials: 'include', headers: { Accept: 'application/json' } });
+      if (!r.ok) throw new Error(path + ' HTTP ' + r.status);
+      return r.json();
+    }
+    function renderRows(tbody, rows, cols) {
+      tbody.innerHTML = rows.length
+        ? rows.map((row) => '<tr>' + cols.map((c) => '<td>' + esc(row[c]) + '</td>').join('') + '</tr>').join('')
+        : '<tr><td colspan="' + cols.length + '">Aucune donnée</td></tr>';
+    }
+    async function load() {
+      $('err').style.display = 'none';
+      try {
+        const [health, alerts, ioc, assets] = await Promise.all([
+          fetchJson('/api/vigil/health'),
+          fetchJson('/api/vigil/alerts'),
+          fetchJson('/api/vigil/ioc'),
+          fetchJson('/api/vigil/assets'),
+        ]);
+        const mode = health.vigil?.mode || 'demo';
+        $('mode-badge').textContent = 'Mode: ' + mode + ' · ' + (health.status === 'ok' ? 'UP' : 'DOWN');
+        $('kpis').innerHTML = [
+          { label: 'Connecteur', value: health.status === 'ok' ? 'UP' : 'DOWN' },
+          { label: 'Alertes', value: alerts.count ?? 0 },
+          { label: 'IOC', value: ioc.count ?? 0 },
+          { label: 'Assets', value: assets.count ?? 0 },
+          { label: 'Latence', value: (health.latency_ms != null ? health.latency_ms + ' ms' : '—') },
+        ].map((k) => '<div class="kpi"><div class="label">' + esc(k.label) + '</div><div class="value">' + esc(k.value) + '</div></div>').join('');
+        renderRows($('alerts-tbody'), (alerts.items || []).slice(0, 20), ['title', 'severity', 'host', 'status']);
+        renderRows($('ioc-tbody'), (ioc.items || []).slice(0, 20), ['type', 'value', 'confidence']);
+        renderRows($('assets-tbody'), (assets.items || []).slice(0, 20), ['hostname', 'os', 'agent_status']);
+      } catch (e) {
+        $('err').textContent = 'Erreur chargement VigilSOC: ' + e.message;
+        $('err').style.display = 'block';
+      }
+    }
+    $('btn-refresh').addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>

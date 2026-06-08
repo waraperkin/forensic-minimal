@@ -1,0 +1,7 @@
+<div class="portal-doc-article">
+  <h3>Ingestion chain</h3>
+  <pre class="portal-doc-diagram">CERT/IT upload → MinIO + Redis queue → ingest-worker
+→ OpenSearch · Timesketch · /api/master/ingest metadata</pre>
+  <p>Supported: EVTX, Plaso, CSV, JSONL, PCAP, STIX, syslog, ZIP/KAPE. Limits: 100 files, 5.4 GB each.</p>
+  <p>Logstash :5044/:5045/:5140/:5555 — network/SIEM feeds. Filebeat — container logs to OpenSearch.</p>
+</div>
