@@ -267,7 +267,7 @@ services:
       - VXVAULT_INTERVAL=${VXVAULT_INTERVAL:-1}
     networks:
       forensic-net:
-        ipv4_address: 172.25.0.112
+        ipv4_address: 172.26.0.112
     depends_on:
       opencti: { condition: service_healthy }
 

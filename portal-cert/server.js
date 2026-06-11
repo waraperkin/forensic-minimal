@@ -16,6 +16,10 @@ const expressWs = require('express-ws');
 const rateLimit = require('express-rate-limit');
 const cors      = require('cors');
 const { enqueueIngestJob } = require('./lib/ingest-queue');
+const { pushToHelk } = require('./lib/helk-connector');
+const { createHelkRoutes } = require('./routes/helk-routes');
+const { createVelociraptorRoutes } = require('./routes/velociraptor-routes');
+const { createGlobalHealthRoutes } = require('./routes/global-health-routes');
 const { MAX_FILES, MAX_SIZE_BYTES, getUploadConfig } = require('./lib/upload-limits');
 const { createMasterRoutes } = require('./lib/master-routes');
 const { createMasterIntakesRoutes } = require('./routes/master-intakes');
@@ -24,6 +28,7 @@ const { createMasterIngestMetaRoutes } = require('./routes/master-ingest-meta');
 const { mountAuth } = require('./lib/auth-mount');
 const { createOverviewRouter } = require('./lib/platform-overview');
 const { createAuditRouter } = require('./lib/audit-log');
+const { createUiErrorRouter } = require('./lib/ui-error-log');
 
 const logger = winston.createLogger({
   level: 'info',
@@ -225,6 +230,15 @@ async function parseAndIndex(buf, filename, caseId, analyst, osType) {
 //  ROUTES
 // ══════════════════════════════════════════════════════════════
 app.get('/api/health',(req,res)=>res.json({status:'ok',portal:'cert',ts:new Date().toISOString()}));
+app.get('/api/cert/health',(req,res)=>res.json({status:'ok',portal:'cert',ts:new Date().toISOString()}));
+app.get('/api/it/health', async (req,res) => {
+  try {
+    const r = await axios.get('http://it-portal:3001/api/health', { timeout: 5000 });
+    res.json(r.data);
+  } catch (e) {
+    res.status(502).json({ status: 'error', error: e.message });
+  }
+});
 
 app.get('/api/config', (_req, res) => {
   res.json({ ...getUploadConfig(), portal: 'cert' });
@@ -244,6 +258,7 @@ app.get('/api/credentials', (_req, res) => {
     { service: 'TheHive', url: `${baseHttps}/thehive/`, login: pw('THEHIVE_ADMIN_LOGIN', 'admin@thehive.local'), password: pw('THEHIVE_ADMIN_PASSWORD'), role: 'Organisation admin' },
     { service: 'Cortex', url: process.env.CORTEX_PUBLIC_URL || `${baseHttps}/cortex/`, login: 'admin', password: pw('CORTEX_ADMIN_PASSWORD', pw('CORTEX_SECRET')), role: 'Super admin' },
     { service: 'Grafana', url: process.env.GRAFANA_ROOT_URL || `${baseHttps}/grafana/`, login: 'admin', password: pw('GRAFANA_ADMIN_PASSWORD'), role: 'Admin dashboards' },
+    { service: 'Velociraptor', url: `${baseHttps}/velociraptor/`, login: pw('VELOCIRAPTOR_ADMIN_USER', 'admin'), password: pw('VELOCIRAPTOR_ADMIN_PASSWORD', 'F0r3ns1c_VR_2024!'), role: 'GUI administrator' },
     { service: 'Timesketch', url: process.env.TIMESKETCH_EXTERNAL_URL || process.env.TIMESKETCH_PUBLIC_URL || `${baseHttps}/timesketch/`, login: pw('TIMESKETCH_USER', 'admin'), password: pw('TIMESKETCH_PASSWORD'), role: 'Analyste timeline' },
     { service: 'MinIO', url: process.env.MINIO_CONSOLE_URL || `${baseHttps}/minio/`, login: pw('MINIO_ROOT_USER', 'forensicadmin'), password: pw('MINIO_ROOT_PASSWORD'), role: 'Console objet' },
     { service: 'OpenSearch Dashboards', url: `${baseHttps}/dashboards/`, login: '—', password: '—', role: 'SSO / sans auth locale' },
@@ -314,6 +329,9 @@ app.post('/api/upload', upload.array('files',50), async (req,res) => {
   const analyst=req.body.analyst||'cert-analyst';
   const osType=req.body.os_type||'unknown';
   const priority=req.body.priority||'medium';
+  const sendHelk = ['1','true','on','yes'].includes(String(req.body.helk_hunt || req.body.helk_send || '').toLowerCase());
+  const fromVelociraptor = req.body.source === 'velociraptor'
+    || ['1','true','on','yes'].includes(String(req.body.velociraptor || '').toLowerCase());
 
   for (const file of (req.files||[])) {
     const uploadId=uuidv4(), ext=(file.originalname.split('.').pop()||'').toLowerCase();
@@ -322,7 +340,10 @@ app.post('/api/upload', upload.array('files',50), async (req,res) => {
     const result={ok:false,file:file.originalname,uploadId,bucket};
     try {
       await s3.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentLength:file.size,ContentType:file.mimetype||'application/octet-stream',Metadata:{'case-id':caseId,analyst,'upload-id':uploadId,portal:'cert'}}));
-      const metaDoc={'@timestamp':ts,upload_id:uploadId,case_id:caseId,analyst,os_type:osType,priority,portal:'cert',file:{name:file.originalname,size:file.size},storage:{bucket,key},event:{module:'cert-upload',category:'file',action:'uploaded'},tags:['cert-portal']};
+      const uploadTags = ['cert-portal'];
+      if (fromVelociraptor) uploadTags.push('velociraptor');
+      const metaDoc={'@timestamp':ts,upload_id:uploadId,case_id:caseId,analyst,os_type:osType,priority,portal:'cert',file:{name:file.originalname,size:file.size},storage:{bucket,key},event:{module: fromVelociraptor ? 'velociraptor-ingest' : 'cert-upload',category:'file',action:'uploaded'},tags:uploadTags};
+      if (fromVelociraptor) metaDoc.source = 'velociraptor';
       await os.index({index:'forensic-uploads',id:uploadId,body:metaDoc}).catch(()=>{});
       await sendToLogstash({...metaDoc,source:'cert-portal'});
       result.ok=true;
@@ -350,6 +371,20 @@ app.post('/api/upload', upload.array('files',50), async (req,res) => {
         result.timesketch_note = 'Timesketch via ingest-worker indisponible — relancer Redis/worker';
       } else {
         result.ingest_note = 'Parsing EVTX/logs en cours (OpenSearch + Timesketch)';
+      }
+
+      if (sendHelk) {
+        result.helk = await pushToHelk({
+          buffer: file.buffer,
+          filename: file.originalname,
+          caseId,
+          analyst,
+          osType,
+          portal: 'cert',
+          uploadId,
+          priority,
+          tags: ['cert-upload'],
+        });
       }
 
       broadcast({type:'upload',file:file.originalname,bucket,caseId,priority,ts});
@@ -597,11 +632,10 @@ let _servicesCache = null;
 let _servicesCacheTs = 0;
 const SERVICES_CACHE_MS = parseInt(process.env.SERVICES_HEALTH_CACHE_MS || '20000', 10);
 
-async function getServicesCheck() {
+  async function getServicesCheck() {
   if (_servicesCache && (Date.now() - _servicesCacheTs) < SERVICES_CACHE_MS) {
     return _servicesCache;
   }
-  const vigilUrl = (process.env.VIGIL_CONNECTOR_URL || 'http://forensic-vigil-connector:8083').replace(/\/$/, '');
   const checks = [
     { name: 'OpenSearch', url: `${CFG.os.url}/_cluster/health`, ok: [200] },
     { name: 'Timesketch', url: `${CFG.ts.url}/login`, ok: [200, 302] },
@@ -614,8 +648,6 @@ async function getServicesCheck() {
     { name: 'Dashboards', url: 'http://opensearch-dashboards:5601/dashboards/api/status', ok: [200] },
     { name: 'Logstash', url: 'http://logstash:9700', ok: [200] },
     { name: 'Portail IT', url: 'http://it-portal:3001/api/health', ok: [200] },
-    { name: 'VigilSOC', url: `${vigilUrl}/health`, ok: [200], vigil: true },
-    { name: 'VigilSOC UI', url: 'http://vigilsoc-ui:8080/health', ok: [200], public_url: '/vigilsoc/' },
   ];
   const results = await Promise.all(checks.map(async (svc) => {
     const t0 = Date.now();
@@ -625,14 +657,6 @@ async function getServicesCheck() {
         const latency_ms = Date.now() - t0;
         const up = svc.ok.includes(r.status);
         const base = { name: svc.name, status: up ? 'up' : 'down', code: r.status, latency_ms };
-        if (svc.vigil && r.data && typeof r.data === 'object') {
-          return {
-            ...base,
-            api_status: r.data.status || (up ? 'ok' : 'down'),
-            vigil_mode: r.data.vigil?.mode,
-            errors: r.data.error || null,
-          };
-        }
         return base;
       } catch (e) {
         if (attempt === 0) {
@@ -653,6 +677,9 @@ app.get('/api/services', async (req, res) => {
   res.json(await getServicesCheck());
 });
 
+app.use('/api', createGlobalHealthRoutes({ CFG, logger }));
+app.use('/api', createUiErrorRouter({ os, logger, defaultPortal: 'cert' }));
+
 app.use('/api/overview', createOverviewRouter({ os, getServicesCheck, CFG }));
 const auditApi = createAuditRouter({ os, logger });
 app.use('/api/audit', auditApi.router);
@@ -660,6 +687,8 @@ app.use('/api', createMasterRoutes({ os, axios, CFG, logger, getServicesCheck })
 app.use('/api', createMasterIntakesRoutes({ os, logger, axios }));
 app.use('/api', createMasterIngestErrorsRoutes({ os, logger }));
 app.use('/api', createMasterIngestMetaRoutes({ os, logger }));
+app.use('/api', createHelkRoutes({ logger }));
+app.use('/api', createVelociraptorRoutes({ logger, os }));
 
 app.get('/api/cases', async (req,res) => {
   try { const r=await os.search({index:'forensic-uploads*',body:{size:0,aggs:{cases:{terms:{field:'case_id',size:100},aggs:{files:{value_count:{field:'upload_id'}},last_upload:{max:{field:'@timestamp'}},portals:{terms:{field:'portal',size:5}}}}}}}); res.json((r.body.aggregations?.cases?.buckets||[]).map(b=>({case_id:b.key,files:b.files.value,last_upload:b.last_upload.value_as_string,portals:b.portals.buckets.map(p=>p.key)}))); }
@@ -672,8 +701,5 @@ app.post('/api/webhook/thehive',(req,res)=>{broadcast({type:'thehive_event',payl
 const threatRouter = require('./lib/threat-platforms-routes').createThreatRoutes({ axios, logger, os, importToTimesketch });
 app.use('/api/threat', require('./lib/threat-v2-proxy').wrapThreatRouter(threatRouter));
 
-// ── VigilSOC connector — proxy microservice (ajout non-breaking) ──
-const vigilRouter = require('./lib/vigil-routes').createVigilRoutes({ axios, logger, recordEvent: auditApi.recordEvent });
-app.use('/api/vigil', vigilRouter);
 app.use((err,req,res,_)=>{logger.error('Express:',err.message);res.status(500).json({error:err.message});});
 app.listen(3000,'0.0.0.0',()=>logger.info('Portail CERT :3000'));

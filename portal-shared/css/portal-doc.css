@@ -107,6 +107,19 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #b8c5d6;
 }
+.portal-doc-arch pre.mermaid {
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  overflow-x: auto;
+  white-space: normal;
+}
+.portal-doc-arch .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
 .portal-doc-table {
   width: 100%;
   border-collapse: collapse;
@@ -199,7 +212,7 @@ body.portal-demo-mode::before {
   font-weight: 700;
 }
 
-/* Premium++ — inventaire outils */
+/* Inventaire plateforme — catalogue outils */
 .portal-doc-premium-plus {
   display: flex;
   flex-direction: column;

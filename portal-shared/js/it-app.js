@@ -205,6 +205,10 @@ async function init() {
   }
 
   bindItUploadZone();
+  await refreshItHelkBadge();
+  await refreshItVelociraptorBadge();
+  setInterval(refreshItHelkBadge, 60000);
+  setInterval(refreshItVelociraptorBadge, 60000);
 }
 
 async function doUpload() {
@@ -220,6 +224,7 @@ async function doUpload() {
   fd.append('submitter_email', document.getElementById('email').value || '');
   fd.append('notes', document.getElementById('notes').value || '');
   validFiles.forEach((f) => fd.append('files', f));
+  if (document.getElementById('helk-sync-it')?.checked) fd.append('helk_sync', 'true');
 
   if (files.length > validFiles.length) {
     log(`⚠️ ${files.length - validFiles.length} fichier(s) ignoré(s) (invalides)`, 'warn');
@@ -286,6 +291,34 @@ async function doUpload() {
 
   setTimeout(() => ForensicComponents.resetUploadProgress('pf', 'pf-meta'), 1500);
   if (tokenData?.max_uses > 1) document.getElementById('ubtn').disabled = files.length === 0;
+}
+
+async function refreshItHelkBadge() {
+  const el = document.getElementById('helk-it-badge');
+  if (!el) return;
+  try {
+    const data = await api.get('api/helk/status');
+    const ok = data?.helk?.ok;
+    el.className = `cc-badge ${ok ? 'cc-badge-ok' : 'cc-badge-warn'}`;
+    el.textContent = ok ? i18n.t('helk.badge_active') : i18n.t('helk.badge_offline');
+  } catch (_) {
+    el.className = 'cc-badge cc-badge-warn';
+    el.textContent = i18n.t('helk.badge_offline');
+  }
+}
+
+async function refreshItVelociraptorBadge() {
+  const el = document.getElementById('vr-it-badge');
+  if (!el) return;
+  try {
+    const data = await api.get('api/velociraptor/status');
+    const ok = data?.velociraptor?.ok;
+    el.className = `cc-badge ${ok ? 'cc-badge-ok' : 'cc-badge-warn'}`;
+    el.textContent = ok ? i18n.t('velociraptor.badge_managed') : i18n.t('velociraptor.badge_offline');
+  } catch (_) {
+    el.className = 'cc-badge cc-badge-warn';
+    el.textContent = i18n.t('velociraptor.badge_offline');
+  }
 }
 
 window.doUpload = doUpload;

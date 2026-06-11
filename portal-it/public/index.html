@@ -11,6 +11,8 @@
 <link rel="stylesheet" href="shared/css/portal-design-system.css">
 <link rel="stylesheet" href="css/it-shell.css">
 <link rel="stylesheet" href="shared/css/portal-cybercorp-stable.css">
+<link rel="stylesheet" href="shared/css/global-health.css">
+<link rel="stylesheet" href="shared/css/global-error.css">
 </head>
 <body class="app-shell portal-v6 portal-cybercorp-stable">
 <div class="fp-it-wrap app-shell">
@@ -69,6 +71,7 @@
   <section id="it-dashboard" class="fp-card fp-card-premium fp-it-overview cc-dash-panel fp-ds-it-dashboard fp-ds-panel-surface" data-i18n-aria="it.dashboard_title">
     <h2 class="fp-section-title fp-ds-page-title" data-i18n="it.dashboard_title"></h2>
     <p class="fp-muted fp-ds-page-lead" data-i18n="it.dashboard_lead"></p>
+    <div id="gh-it-overview" class="fp-section-spaced"></div>
     <div id="it-kpi-root"><p class="fp-muted" data-i18n="ui.loading"></p></div>
     <div id="it-actions-root"></div>
     <div id="it-no-token-banner" class="fp-alert fp-alert-warn fp-ds-animate-in" style="display:none;margin-top:1rem" role="alert" data-i18n="it.no_token_message"></div>
@@ -112,6 +115,12 @@
       <label class="fp-label"><span data-i18n="it.label_notes"></span>
         <textarea class="fp-textarea" id="notes" rows="3" data-i18n-placeholder="it.notes_placeholder" placeholder=""></textarea>
       </label>
+      <label class="fp-label fp-label-checkbox">
+        <input type="checkbox" id="helk-sync-it" checked>
+        <span data-i18n="helk.sync_assets_logs"></span>
+      </label>
+      <p class="fp-hint"><span id="helk-it-badge" class="cc-badge cc-badge-muted" data-i18n="helk.status_loading"></span></p>
+      <p class="fp-hint"><span id="vr-it-badge" class="cc-badge cc-badge-muted" data-i18n="velociraptor.status_loading"></span></p>
       <button type="button" class="fp-btn fp-btn-primary" id="ubtn" disabled onclick="doUpload()" style="width:100%" data-i18n="it.submit"></button>
       <div class="fp-upload-progress">
         <div class="fp-progress-bar"><div class="fp-progress-fill" id="pf"></div></div>
@@ -167,6 +176,10 @@
 <script src="shared/js/portal-config.js"></script>
 <script src="shared/js/header.js"></script>
 <script src="shared/js/forensic-utils.js"></script>
+<script src="shared/js/api-client.js"></script>
+<script src="shared/js/ui-error-logger.js"></script>
+<script src="shared/js/global-error-boundary.js"></script>
+<script src="shared/js/proxy-frame.js"></script>
 <script src="shared/js/forensic-api.js"></script>
 <script src="shared/js/forensic-ui.js"></script>
 <script src="shared/js/forensic-validation.js"></script>
@@ -177,6 +190,8 @@
 <script src="shared/js/portal-v6.js"></script>
 <script src="shared/js/it-dashboard.js"></script>
 <script src="shared/js/it-operations.js"></script>
+<script src="shared/js/global-health-service.js"></script>
+<script src="shared/js/global-health-dashboard.js"></script>
 <script src="shared/js/it-app.js"></script>
 <script src="shared/js/it-minimal-pages.js"></script>
 <script src="shared/js/portal-nav.js"></script>

@@ -1,187 +1,234 @@
 <div class="portal-doc-article portal-doc-arch">
-  <p class="portal-doc-lead">Architecture de référence de la plateforme forensic CYBERCORP — réseau Docker <code>forensic-net</code> (<code>172.25.0.0/16</code>), reverse proxy Nginx TLS, 30+ services orchestrés par <code>docker-compose.yml</code>.</p>
+  <p class="portal-doc-lead">Architecture complète de la plateforme <strong>CYBERCORP Forensic Minimal</strong> : point d'entrée unique Nginx (TLS), portails CERT/IT, cluster OpenSearch, sidecars HELK et Velociraptor, stack CTI/IR et observabilité. Réseaux Docker : <code>forensic-net</code>, <code>helk_net</code>, <code>velociraptor_net</code>.</p>
 
-  <h3>1. Vue macro — couches</h3>
-  <pre class="portal-doc-diagram">┌─────────────────────────────────────────────────────────────────────────────┐
-│  ANALYSTES / IT                                                             │
-│  Navigateur HTTPS ──► Nginx :443 (forensic-nginx)                           │
-└───────────────────────────────────┬─────────────────────────────────────────┘
-                                    │
-        ┌───────────────────────────┼───────────────────────────┐
-        ▼                           ▼                           ▼
- ┌──────────────┐          ┌──────────────┐          ┌──────────────────┐
- │ cert-portal  │          │  it-portal   │          │ Services SOC     │
- │ Node :3000   │          │  Node :3001  │          │ (proxy paths)    │
- │ /api/*       │          │  /it/        │          │ OSD, GF, CTI, TS │
- └──────┬───────┘          └──────┬───────┘          └────────┬─────────┘
-        │                         │                            │
-        └────────────┬────────────┴────────────────────────────┘
-                     ▼
- ┌──────────────────────────────────────────────────────────────────────────┐
- │  COUCHE DONNÉES &amp; TRAITEMENT                                            │
- │  Redis (queue) · MinIO (objets) · ingest-worker · OpenSearch · Timesketch │
- │  Postgres · RabbitMQ · Cassandra (TheHive)                                │
- └───────────────────────────────────┬──────────────────────────────────────┘
-                                     ▼
- ┌──────────────────────────────────────────────────────────────────────────┐
- │  COUCHE CTI &amp; DÉTECTION EXTERNE                                          │
- │  OpenCTI + connecteurs · MISP · TheHive · Cortex                          │
- │  sekoia-controlplane :8081 · sentinelone-controlplane :8082               │
- └───────────────────────────────────┬──────────────────────────────────────┘
-                                     ▼
- ┌──────────────────────────────────────────────────────────────────────────┐
- │  OBSERVABILITÉ — Prometheus · Grafana · Loki · Tempo · Filebeat · Logstash│
- └──────────────────────────────────────────────────────────────────────────┘</pre>
+  <h3>1. Topologie réseau — vue analyste</h3>
+  <p>Tout le trafic HTTPS transite par <strong>forensic-nginx</strong>. Les bridges HELK/VR sont exposés sous <code>/velociraptor/api/*</code> (routes nginx prioritaires avant la GUI).</p>
+  <pre class="mermaid">flowchart TB
+    classDef edge fill:#1565c0,stroke:#00e5ff,stroke-width:2px,color:#e3f2fd
+    classDef portal fill:#0d47a1,stroke:#42a5f5,stroke-width:2px,color:#fff
+    classDef soc fill:#4a148c,stroke:#ce93d8,stroke-width:2px,color:#f3e5f5
+    classDef side fill:#e65100,stroke:#ffb74d,stroke-width:2px,color:#fff
+    classDef data fill:#1b5e20,stroke:#81c784,stroke-width:2px,color:#e8f5e9
+    classDef cti fill:#880e4f,stroke:#f48fb1,stroke-width:2px,color:#fce4ec
 
-  <h3>2. Routage Nginx (point d'entrée unique)</h3>
-  <p>Tout le trafic analyste transite par <strong>forensic-nginx</strong> (TLS auto-signé). Les upstreams principaux :</p>
+    NGINX["🔒 Nginx :443<br/>TLS + reverse proxy"]:::edge
+
+    subgraph portals ["Portails opérationnels"]
+      CERT["cert-portal :3000<br/>API REST + SPA"]:::portal
+      IT["it-portal :3001<br/>Upload token IT"]:::portal
+    end
+
+    subgraph soc_tools ["Outils SOC (proxy nginx)"]
+      OSD["OpenSearch Dashboards<br/>/dashboards/"]:::soc
+      GRAF["Grafana<br/>/grafana/"]:::soc
+      TS["Timesketch<br/>/timesketch/"]:::soc
+      MINIO["MinIO Console<br/>/minio/"]:::soc
+    end
+
+    subgraph cti_stack ["CTI &amp; réponse incident"]
+      OCTI["OpenCTI /cti/"]:::cti
+      MISP["MISP /misp/"]:::cti
+      HIVE["TheHive /thehive/"]:::cti
+      CORTEX["Cortex /cortex/"]:::cti
+    end
+
+    subgraph sidecars ["Sidecars hunting &amp; DFIR"]
+      HB["helk-bridge :8090"]:::side
+      VB["velociraptor-bridge :8097"]:::side
+      HES["HELK Elasticsearch"]:::side
+      HKB["HELK Kibana /helk/kibana/"]:::side
+      VRS["velociraptor-server :8000"]:::side
+    end
+
+    subgraph data_layer ["Couche données &amp; traitement"]
+      OS[("OpenSearch FP<br/>2 nœuds")]:::data
+      REDIS[("Redis<br/>queue ingest")]:::data
+      MINIO_D[("MinIO<br/>evidences")]:::data
+      IW["ingest-worker"]:::data
+      LS["Logstash FP"]:::data
+      PG[("PostgreSQL")]:::data
+    end
+
+    NGINX --> CERT & IT
+    NGINX --> OSD & GRAF & TS & MINIO
+    NGINX --> OCTI & MISP & HIVE & CORTEX
+    NGINX --> HKB & VRS & HB & VB
+
+    CERT --> OS & REDIS & MINIO_D & HB & VB
+    IT --> CERT
+    IW --> OS & TS
+    LS --> OS
+    HB --> HES & OS
+    VB --> VRS & OS & MINIO_D
+    OCTI --> PG & OS</pre>
+
+  <h3>2. Flux ingest forensique (upload → SIEM → timeline)</h3>
+  <pre class="mermaid">sequenceDiagram
+    autonumber
+    actor Analyste as Analyste CERT/IT
+    participant Portal as cert-portal / it-portal
+    participant MinIO as MinIO
+    participant Redis as Redis queue
+    participant Worker as ingest-worker
+    participant OS as OpenSearch FP
+    participant TS as Timesketch
+    participant TI as ti_enrichment
+
+    Analyste->>Portal: POST /api/upload (+ metadata case_id, OS)
+    Portal->>Portal: Validation upload-limits.js
+    Portal->>MinIO: PutObject (bucket par type)
+    Portal->>Redis: enqueueIngestJob()
+    Worker->>Redis: dequeue job
+    Worker->>MinIO: GetObject
+    Worker->>Worker: Parse EVTX / CSV / Plaso / texte
+    Worker->>OS: bulk index forensic-* / fp-*
+    Worker->>TI: enrichissement IOC (optionnel)
+    Worker->>TS: timesketch_io.py (CSV 9 col.)
+    Worker-->>Portal: ACK / erreur → ingest-errors</pre>
+
+  <h3>3. Flux HELK hunting (lab offline → détections → OpenSearch)</h3>
+  <pre class="mermaid">flowchart LR
+    classDef ui fill:#0d47a1,stroke:#00e5ff,color:#fff
+    classDef bridge fill:#e65100,stroke:#ffb74d,color:#fff
+    classDef store fill:#1b5e20,stroke:#81c784,color:#e8f5e9
+
+    UI["Panneau HELK Hunting<br/>helk-integration.js"]:::ui
+    API["POST /api/helk/lab/ingest"]:::ui
+    BR["helk-bridge"]:::bridge
+    LAB["lab_ingest.py<br/>lab-sources/"]:::bridge
+    LS["Logstash pipelines<br/>0010→0099"]:::bridge
+    HES[("HELK ES<br/>helk-sysmon-*")]:::store
+    SYNC["POST /api/helk/sync"]:::bridge
+    FPS[("OpenSearch FP<br/>helk-findings")]:::store
+    GRAF["Grafana helk-mitre"]:::store
+    TSX["Export Timesketch"]:::store
+
+    UI --> API --> BR --> LAB --> LS --> HES
+    UI --> SYNC --> BR --> FPS
+    HES -.-> GRAF
+    BR -.-> TSX</pre>
+
+  <h3>4. Flux Velociraptor DFIR (collecte → index → export)</h3>
+  <pre class="mermaid">flowchart TB
+    classDef ui fill:#0d47a1,stroke:#00e5ff,color:#fff
+    classDef bridge fill:#bf360c,stroke:#ff8a65,color:#fff
+    classDef out fill:#33691e,stroke:#aed581,color:#fff
+
+    P["Portail VR<br/>velociraptor-integration.js"]:::ui
+    OFF["Collecte offline<br/>lab/collect-full"]:::bridge
+    LIVE["Collecte live<br/>/collect + agent"]:::bridge
+    VB["velociraptor-bridge"]:::bridge
+    VR["velociraptor-server"]:::bridge
+    ART["Artefacts YAML<br/>ForensicFull"]:::bridge
+    OS[("OpenSearch<br/>velociraptor-*")]:::out
+    MIO[("MinIO evidences")]:::out
+    TS[("Timesketch sketch")]:::out
+    CERT[("Export CERT")]:::out
+
+    P --> OFF & LIVE --> VB
+    LIVE --> VR
+    VB --> ART
+    VB --> OS & MIO & TS & CERT</pre>
+
+  <h3>5. Stack CTI &amp; corrélation IR</h3>
+  <pre class="mermaid">flowchart LR
+    classDef cti fill:#880e4f,stroke:#f48fb1,color:#fce4ec
+    classDef portal fill:#0d47a1,stroke:#42a5f5,color:#fff
+    classDef os fill:#1b5e20,stroke:#81c784,color:#e8f5e9
+
+    PORT["Portail CTI<br/>Onglet + IOC Correlation"]:::portal
+    OCTI["OpenCTI<br/>STIX graph"]:::cti
+    MISP["MISP<br/>Events IOC"]:::cti
+    HIVE["TheHive<br/>Cas IR"]:::cti
+    CORTEX["Cortex<br/>Analyseurs"]:::cti
+    HELK_E["Export HELK<br/>/api/helk/export-cti"]:::portal
+    OS[("fp-ti-* indices")]:::os
+
+    PORT --> OCTI & MISP
+    HIVE --> CORTEX
+    OCTI &lt;--&gt; MISP
+    OCTI --> OS
+    MISP --> OS
+    HELK_E --> OCTI
+    PORT --> HIVE</pre>
+
+  <h3>6. Routage Nginx — tableau de référence</h3>
   <table class="portal-doc-table">
-    <thead><tr><th>Chemin public</th><th>Upstream</th><th>Service cible</th></tr></thead>
+    <thead><tr><th>Chemin public</th><th>Upstream Docker</th><th>Usage analyste</th></tr></thead>
     <tbody>
-      <tr><td><code>/</code></td><td>cert-portal:3000</td><td>Portail CERT + API REST</td></tr>
-      <tr><td><code>/it/</code></td><td>it-portal:3001</td><td>Portail IT (upload token)</td></tr>
-      <tr><td><code>/dashboards/</code></td><td>opensearch-dashboards:5601</td><td>OpenSearch Dashboards</td></tr>
-      <tr><td><code>/grafana/</code></td><td>grafana:3000</td><td>Grafana OSS</td></tr>
-      <tr><td><code>/cti/</code></td><td>opencti:8080</td><td>OpenCTI platform</td></tr>
-      <tr><td><code>/thehive/</code></td><td>thehive:9000</td><td>TheHive 5</td></tr>
-      <tr><td><code>/misp/</code></td><td>misp:80</td><td>MISP core</td></tr>
-      <tr><td><code>/timesketch/</code> + <code>/api/v1/</code></td><td>timesketch-web:5000</td><td>Timesketch (SPA)</td></tr>
-      <tr><td><code>/minio/</code></td><td>minio:9001</td><td>Console MinIO</td></tr>
-      <tr><td><code>/cortex/</code></td><td>cortex:9001</td><td>Cortex</td></tr>
-      <tr><td><code>/shared/</code></td><td>cert-portal (statique)</td><td>Assets portail partagés</td></tr>
+      <tr><td><code>/</code></td><td>cert-portal:3000</td><td>Hub CERT, API <code>/api/*</code>, WebSocket logs</td></tr>
+      <tr><td><code>/it/</code></td><td>it-portal:3001</td><td>Dépôt preuves avec token CERT</td></tr>
+      <tr><td><code>/dashboards/</code></td><td>opensearch-dashboards:5601</td><td>SIEM, playbooks OSD, Discover</td></tr>
+      <tr><td><code>/grafana/</code></td><td>grafana:3000</td><td>Santé plateforme, HELK, VR, métriques</td></tr>
+      <tr><td><code>/helk/kibana/</code></td><td>helk-kibana:5601</td><td>Hunting Sysmon, Zeek, MITRE</td></tr>
+      <tr><td><code>/helk/api/</code></td><td>helk-elasticsearch:9200</td><td>API ES HELK (admin)</td></tr>
+      <tr><td><code>/velociraptor/api/*</code></td><td>velociraptor-bridge:8097</td><td>Collecte, export, lab artefacts</td></tr>
+      <tr><td><code>/velociraptor/</code></td><td>velociraptor-server:8000</td><td>GUI administration VR</td></tr>
+      <tr><td><code>/timesketch/</code> + <code>/api/v1/</code></td><td>timesketch-web:5000</td><td>Timelines forensic (SPA)</td></tr>
+      <tr><td><code>/cti/</code></td><td>opencti:8080</td><td>Knowledge graph, connecteurs</td></tr>
+      <tr><td><code>/thehive/</code></td><td>thehive:9000</td><td>Gestion cas, observables</td></tr>
+      <tr><td><code>/misp/</code></td><td>misp</td><td>Partage IOC, galaxie MITRE</td></tr>
+      <tr><td><code>/cortex/</code></td><td>cortex:9001</td><td>Analyseurs automatisés</td></tr>
+      <tr><td><code>/minio/</code></td><td>minio:9001</td><td>Console objets / preuves</td></tr>
     </tbody>
   </table>
+  <p>Fichier source : <code>config/nginx/conf.d/forensic.conf</code> — snippets : <code>grafana-proxy.conf</code>, <code>misp-root-paths.conf</code>.</p>
 
-  <h3>3. Portail CERT — architecture applicative</h3>
-  <pre class="portal-doc-diagram">Navigateur
-   │
-   ├─► HTML/JS/CSS statiques (portal-shared → /shared/)
-   │
-   ├─► /api/auth/*        Session cookie, MFA TOTP, rôles admin/analyste
-   ├─► /api/overview/*    Santé services, ingest stats, CTI summary
-   ├─► /api/master/*      Incidents, KB, dashboards FP-Master
-   ├─► /api/upload        Dépôt evidence → MinIO + queue Redis
-   ├─► /api/audit/events  Journal d'activité (modifications plateforme)
-   │
-   └─► /api/threat/*      Proxy Node → control planes
-         ├─► sekoia-controlplane:8081   (intakes, règles, fetch, CC)
-         └─► sentinelone-controlplane:8082 (agents, policies, DV)</pre>
-  <p>Chargement JS modulaire via <code>portal-lazy.js</code> : threat-platforms, governance, cert-tools, sekoia-cc, portal-doc, portal-ai.</p>
-
-  <h3>4. Pipeline d'ingestion forensique</h3>
-  <pre class="portal-doc-diagram">Upload CERT/IT (multer)
-      │
-      ├─► MinIO (bucket par type: logs-windows, timesketch, pcap, iocs…)
-      ├─► Redis LPUSH ingest-queue
-      │
-      ▼
- ingest-worker (Python)
-      ├─ Parse EVTX / texte / CSV / Plaso
-      ├─ Bulk index OpenSearch (forensic-*, fp-threat-*)
-      ├─ timesketch_pipeline → CSV 9 colonnes → Timesketch API
-      └─ Métadonnées ingest → /api/master/ingest</pre>
-  <p><strong>Types supportés :</strong> EVTX, EVT, LOG, syslog, Plaso, CSV, JSONL, PCAP, STIX, ZIP/KAPE… Voir onglet Upload pour limites (100 fichiers, 5.4 Go/fichier).</p>
-  <p><strong>Logstash</strong> (ports 5044 Beats, 5045 JSON, 5140 syslog, 5555 HEC) alimente également OpenSearch pour les flux réseau/SIEM.</p>
-
-  <h3>5. Cluster OpenSearch</h3>
-  <table class="portal-doc-table">
-    <thead><tr><th>Conteneur</th><th>Rôle</th><th>Volume</th></tr></thead>
-    <tbody>
-      <tr><td>forensic-opensearch-1</td><td>Nœud master/data</td><td>opensearch-data1</td></tr>
-      <tr><td>forensic-opensearch-2</td><td>Nœud data</td><td>opensearch-data2</td></tr>
-      <tr><td>forensic-opensearch-dashboards</td><td>UI recherche</td><td>—</td></tr>
-      <tr><td>forensic-opensearch-init</td><td>Templates, ISM, mappings</td><td>—</td></tr>
-      <tr><td>forensic-logstash</td><td>Ingestion pipeline</td><td>logstash-data</td></tr>
-      <tr><td>forensic-filebeat</td><td>Logs conteneurs → OS</td><td>—</td></tr>
-    </tbody>
-  </table>
-  <p>Indices typiques : <code>forensic-windows-*</code>, <code>forensic-endpoint-*</code>, <code>fp-threat-hunts</code>, <code>fp-threat-ioc</code>. Santé cluster visible dans Vue d'ensemble (KPI GREEN/YELLOW/RED).</p>
-
-  <h3>6. Stack CTI &amp; réponse</h3>
-  <pre class="portal-doc-diagram">OpenCTI (hub)
-   ├─ Connecteurs MITRE, CVE, datasets (docker-compose.opencti.yml)
-   ├─ Stockage : Postgres, Redis, RabbitMQ, MinIO, OpenSearch
-   │
-MISP ◄──► OpenCTI (sync IOC)
-TheHive ◄──► Cortex (analyseurs)
-   └─ Cassandra + MinIO (artefacts)</pre>
-
-  <h3>7. Timesketch</h3>
-  <ul>
-    <li><strong>forensic-timesketch-web</strong> — UI + API REST</li>
-    <li><strong>forensic-timesketch-worker</strong> — Celery (import timelines)</li>
-    <li><strong>forensic-timesketch-init</strong> — bootstrap utilisateurs/sketches</li>
-    <li>Import automatique depuis ingest-worker ; export manuel depuis outils CERT / Sekoia fetch</li>
-  </ul>
-
-  <h3>8. Control planes détection (CYBERCORP)</h3>
-  <table class="portal-doc-table">
-    <thead><tr><th>Service</th><th>Port</th><th>Fonction</th></tr></thead>
-    <tbody>
-      <tr><td>cybercorp-sekoia-controlplane</td><td>8081</td><td>API Sekoia : intakes, règles Sigma, clés, fetch events, inventaire CC</td></tr>
-      <tr><td>cybercorp-sentinelone-controlplane</td><td>8082</td><td>API S1 : endpoints, policies, threats, Deep Visibility</td></tr>
-    </tbody>
-  </table>
-  <p>Secrets connecteurs stockés chiffrés dans <code>sekoia-cp-data</code> — jamais en clair dans <code>.env</code> côté UI.</p>
-
-  <h3>9. Observabilité</h3>
-  <table class="portal-doc-table">
-    <thead><tr><th>Composant</th><th>Rôle</th></tr></thead>
-    <tbody>
-      <tr><td>Prometheus</td><td>Métriques conteneurs &amp; exporters</td></tr>
-      <tr><td>Grafana</td><td>Dashboards SOC (cumul OpenSearch, santé services, ingest)</td></tr>
-      <tr><td>Loki</td><td>Agrégation logs</td></tr>
-      <tr><td>Tempo</td><td>Traces distribuées</td></tr>
-      <tr><td>Portainer :9443</td><td>Administration Docker (hors Nginx)</td></tr>
-    </tbody>
-  </table>
-
-  <h3>10. Inventaire complet des services Docker</h3>
+  <h3>7. API portail CERT — endpoints principaux</h3>
   <table class="portal-doc-table portal-doc-table-compact">
-    <thead><tr><th>Conteneur</th><th>Image / build</th><th>Dépendances clés</th></tr></thead>
+    <thead><tr><th>Groupe</th><th>Exemples</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td>forensic-nginx</td><td>nginx:1.25-alpine</td><td>cert-portal, it-portal, tous upstreams</td></tr>
-      <tr><td>forensic-cert-portal</td><td>fp-final2-cert-portal</td><td>redis, opensearch, minio</td></tr>
-      <tr><td>forensic-it-portal</td><td>fp-final2-it-portal</td><td>redis, minio</td></tr>
-      <tr><td>forensic-ingest-worker</td><td>build local</td><td>redis, opensearch, minio, timesketch</td></tr>
-      <tr><td>forensic-postgres</td><td>postgres:15</td><td>OpenCTI, Timesketch metadata</td></tr>
-      <tr><td>forensic-redis</td><td>redis:7</td><td>Queues, cache, OpenCTI</td></tr>
-      <tr><td>forensic-rabbitmq</td><td>rabbitmq:3.12</td><td>OpenCTI workers</td></tr>
-      <tr><td>forensic-minio</td><td>minio</td><td>Objets preuves, OpenCTI</td></tr>
-      <tr><td>forensic-opensearch-1/2</td><td>opensearch 2.12</td><td>Cluster SIEM</td></tr>
-      <tr><td>forensic-opencti</td><td>opencti 6.2</td><td>postgres, redis, rabbitmq, minio, OS</td></tr>
-      <tr><td>forensic-misp</td><td>misp-core</td><td>misp-db (MariaDB)</td></tr>
-      <tr><td>forensic-thehive</td><td>thehive 5.3</td><td>cassandra, minio</td></tr>
-      <tr><td>forensic-cortex</td><td>cortex 3.2</td><td>thehive (jobs)</td></tr>
-      <tr><td>forensic-grafana</td><td>grafana 10.4</td><td>prometheus, loki</td></tr>
-      <tr><td>forensic-prometheus</td><td>prometheus</td><td>—</td></tr>
-      <tr><td>forensic-loki / tempo</td><td>grafana stack</td><td>—</td></tr>
-      <tr><td>cybercorp-sekoia-controlplane</td><td>build local</td><td>sekoia-cp-data volume</td></tr>
-      <tr><td>cybercorp-sentinelone-controlplane</td><td>build local</td><td>secrets chiffrés</td></tr>
+      <tr><td>Auth</td><td><code>/api/auth/login</code>, <code>/api/auth/mfa</code></td><td>Session cookie, TOTP</td></tr>
+      <tr><td>Ingest</td><td><code>POST /api/upload</code></td><td>Multer → MinIO + Redis (max 100 fichiers, 5.4 Go/fichier)</td></tr>
+      <tr><td>Master IR</td><td><code>/api/master/incidents</code>, <code>/api/master/kb</code></td><td>CRUD incidents, tickets, KB, assets</td></tr>
+      <tr><td>HELK</td><td><code>/api/helk/status</code>, <code>/api/helk/lab/ingest</code>, <code>/api/helk/sync</code></td><td>Proxy helk-bridge</td></tr>
+      <tr><td>Velociraptor</td><td><code>/api/velociraptor/lab/collect-full</code>, <code>/api/velociraptor/clients</code></td><td>Proxy velociraptor-bridge</td></tr>
+      <tr><td>Santé</td><td><code>/api/health/global</code></td><td>Agrégation 11+ services SOC</td></tr>
+      <tr><td>Audit</td><td><code>/api/audit/events</code></td><td>Journal modifications portail</td></tr>
+      <tr><td>Tokens IT</td><td><code>POST /api/tokens/generate</code></td><td>Jetons dépôt équipes IT</td></tr>
+    </tbody>
+  </table>
+  <p>Référence complète : <code>docs/PORTAL/API.md</code></p>
+
+  <h3>8. Services Docker &amp; volumes persistants</h3>
+  <table class="portal-doc-table portal-doc-table-compact">
+    <thead><tr><th>Conteneur</th><th>Rôle</th><th>Volume clé</th></tr></thead>
+    <tbody>
+      <tr><td>forensic-cert-portal</td><td>Node.js Express, routes HELK/VR/master</td><td>cert-portal-uploads</td></tr>
+      <tr><td>forensic-it-portal</td><td>Upload token-based</td><td>shared-uploads</td></tr>
+      <tr><td>forensic-ingest-worker</td><td>Parsers Python, bulk OS, import TS</td><td>—</td></tr>
+      <tr><td>forensic-opensearch-1/2</td><td>Cluster SIEM 2 nœuds</td><td>opensearch-data1/2</td></tr>
+      <tr><td>helk-bridge</td><td>Sync, export Timesketch/CTI, lab ingest</td><td>montage helk/</td></tr>
+      <tr><td>velociraptor-bridge</td><td>Collecte, export multi-cibles</td><td>artefacts + lab-data</td></tr>
+      <tr><td>forensic-opencti + connecteurs</td><td>Hub CTI STIX</td><td>opencti-data, postgres-data</td></tr>
+      <tr><td>forensic-grafana</td><td>Dashboards provisionnés</td><td>grafana-data</td></tr>
     </tbody>
   </table>
 
-  <h3>11. Volumes persistants</h3>
-  <p>Données survivant aux <code>docker compose down</code> (sans <code>-v</code>) : <code>opensearch-data1/2</code>, <code>minio-data</code>, <code>postgres-data</code>, <code>timesketch-data</code>, <code>opencti-data</code>, <code>misp-*</code>, <code>thehive-data</code>, <code>cassandra-data</code>, <code>cert-portal-uploads</code>, <code>shared-uploads</code>, <code>sekoia-cp-data</code>, <code>grafana-data</code>, <code>prometheus-data</code>, <code>loki-data</code>, <code>tempo-data</code>.</p>
+  <h3>9. Parcours analyste type (corrélation bout-en-bout)</h3>
+  <pre class="mermaid">flowchart TD
+    A["1. Créer incident master<br/>CASE-001"] --> B["2. Upload EVTX/logs"]
+    B --> C["3. Vérifier ingest OS + TS"]
+    C --> D{"Investigation"}
+    D --> E["HELK: lab ingest + Sigma"]
+    D --> F["VR: collecte offline"]
+    D --> G["OSD: requêtes host/IOC"]
+    E --> H["Sync helk-findings"]
+    F --> H
+    G --> H
+    H --> I["Pivots Grafana/Kibana"]
+    I --> J["Export IOC → OpenCTI"]
+    J --> K["Cas TheHive + Cortex"]
+    K --> L["Clôture incident + KB"]</pre>
 
-  <h3>12. Flux de corrélation analyste (cas d'usage)</h3>
-  <ol>
-    <li>Alerte Sekoia / incident FP-Master → fiche dans portail CERT</li>
-    <li>Collecte ciblée Sekoia fetch ou S1 DV sur l'asset</li>
-    <li>Investigation asset / XDR View — corrélation multi-source</li>
-    <li>Timeline Builder → export Timesketch</li>
-    <li>IOC → corrélation OpenCTI/MISP + règles</li>
-    <li>Centre d'audit — traçabilité des modifications</li>
-  </ol>
-
-  <h3>13. Sécurité réseau &amp; session</h3>
+  <h3>10. Sécurité &amp; exploitation</h3>
   <ul>
-    <li>TLS terminé sur Nginx ; HSTS activé</li>
-    <li>Session portail : cookie HttpOnly, MFA TOTP optionnel</li>
-    <li>Portail IT : accès par token à usage limité (dépôt preuves)</li>
-    <li>API threat : Bearer JWT Sekoia (durée ~15 min) saisi dans Configuration</li>
-    <li>Mode démo documentation : bloque purge/delete/regenerate</li>
+    <li><strong>TLS</strong> terminé sur Nginx — HSTS activé, certificats dans <code>config/nginx/certs/</code></li>
+    <li><strong>Session portail</strong> — cookie HttpOnly ; MFA TOTP optionnel</li>
+    <li><strong>Portail IT</strong> — accès uniquement via token à durée/usage limités</li>
+    <li><strong>Mode démo</strong> (Documentation) — bloque purge/delete/regenerate</li>
+    <li><strong>Maintenance</strong> — <code>./forensic.sh check-health</code>, <code>docker compose logs cert-portal</code></li>
   </ul>
 
-  <p class="fp-muted portal-doc-version">Référence docker-compose v2.1 — réseau <code>172.25.0.0/16</code>. Schéma aligné sur <code>config/nginx/conf.d/forensic.conf</code> et <code>LOG_FORENSIC_PLATFORM_REBUILD.md</code>.</p>
+  <p class="fp-muted portal-doc-version">Version doc 2026.06.11 — aligné <code>docs/PORTAL/ARCHITECTURE.md</code>, <code>docker-compose.yml</code>, scripts <code>helk_full_config_verify.py</code> et <code>velociraptor_full_config_verify.py</code>.</p>
 </div>

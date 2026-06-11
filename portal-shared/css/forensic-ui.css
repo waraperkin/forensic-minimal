@@ -209,8 +209,8 @@ body {
   min-width: 0;
 }
 
-.fp-panel { display: none; flex-direction: column; gap: 1rem; animation: fadeIn 0.2s ease; }
-.fp-panel.active { display: flex; }
+.fp-panel { display: none; flex-direction: column; gap: 1rem; animation: fadeIn 0.2s ease; pointer-events: none; }
+.fp-panel.active { display: flex; pointer-events: auto; }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }

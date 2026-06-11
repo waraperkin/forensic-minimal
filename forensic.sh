@@ -393,9 +393,13 @@ start_print_summary() {
 }
 
 start_build_images() {
-  step "0/8 Build images Docker (ingest-worker, timesketch-worker)"
+  step "0/8 Build images Docker"
+  local services=(ingest-worker timesketch-worker)
+  if [ "${FP_FULL_ORCHESTRATOR:-0}" = "1" ] || [ "${FP_START_BUILD_PORTALS:-0}" = "1" ]; then
+    services+=(cert-portal it-portal helk-bridge velociraptor-bridge)
+  fi
   local svc built=0
-  for svc in ingest-worker timesketch-worker; do
+  for svc in "${services[@]}"; do
     info "docker compose build $svc ..."
     if docker compose build "$svc"; then
       ok "build $svc"
@@ -404,9 +408,6 @@ start_build_images() {
       warn "build $svc échoué (continue)"
     fi
   done
-  if [ "${FP_START_BUILD_PORTALS:-0}" = "1" ]; then
-    docker compose build cert-portal it-portal 2>/dev/null || warn "build portails échoué"
-  fi
   START_OK+=("Build images ($built service(s))")
 }
 
@@ -934,6 +935,74 @@ fp_status_ti_connectors() {
 }
 
 # ──────────────────────────────────────────────────────────────
+#  ORCHESTRATEUR CLÉ EN MAIN — ./forensic.sh -full-start
+#  Phases 1-3 (système, deps, monorepo) → full_start → santé → tests → rapport
+# ──────────────────────────────────────────────────────────────
+full_start_orchestrator() {
+  local _e=0
+  case $- in *e*) _e=1;; esac
+  set +e
+
+  FP_ORCH_START_TS=$(date +%s)
+  FP_ORCH_REPORT=()
+  FP_ORCH_TEST_OK=0
+  FP_ORCH_TEST_FAIL=0
+  START_OK=()
+  START_FAIL=()
+  START_WARN=()
+
+  local ip
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  [ -n "$ip" ] && export FP_ORCH_BASE_URL="https://${ip}"
+
+  echo ""
+  info "╔══════════════════════════════════════════════════════════════╗"
+  info "║  FORENSIC-MINIMAL — ORCHESTRATEUR FULL-START                 ║"
+  info "║  Install · Build · Start · Test · Rapport                    ║"
+  info "╚══════════════════════════════════════════════════════════════╝"
+  echo ""
+
+  command -v fp_verify_system >/dev/null 2>&1 && fp_verify_system || warn "fp_verify_system indisponible"
+
+  if ! fp_phase0_dependencies; then
+    command -v fp_full_start_final_report >/dev/null 2>&1 && fp_full_start_final_report 1
+    [ "$_e" -eq 1 ] && set -e
+    return 1
+  fi
+
+  command -v fp_install_dependencies_extended >/dev/null 2>&1 && fp_install_dependencies_extended || true
+
+  if command -v fp_verify_monorepo >/dev/null 2>&1; then
+    if ! fp_verify_monorepo; then
+      err "Monorepo invalide — arrêt orchestrateur"
+      command -v fp_full_start_final_report >/dev/null 2>&1 && fp_full_start_final_report 1
+      [ "$_e" -eq 1 ] && set -e
+      return 1
+    fi
+  fi
+
+  fp_phase1_system
+
+  FP_ORCH_PREAMBLE_DONE=1
+  FP_FULL_BOOT=1
+  FP_START_BUILD_PORTALS=1
+  FP_FULL_ORCHESTRATOR=1
+
+  full_start
+  local fs_rc=$?
+
+  command -v fp_full_start_health_global >/dev/null 2>&1 && fp_full_start_health_global || true
+  command -v fp_full_start_extended_tests >/dev/null 2>&1 && fp_full_start_extended_tests || true
+
+  if command -v fp_full_start_final_report >/dev/null 2>&1; then
+    fp_full_start_final_report "$fs_rc"
+  fi
+
+  [ "$_e" -eq 1 ] && set -e
+  return "$fs_rc"
+}
+
+# ──────────────────────────────────────────────────────────────
 #  FULL-BOOT (stack Docker + build + activation SIEM/TI/Timesketch/Grafana)
 #  Activé via : ./forensic.sh rebuild | full-start  ou  FP_FULL_BOOT=1
 # ──────────────────────────────────────────────────────────────
@@ -951,8 +1020,10 @@ full_start() {
   command -v fp_log >/dev/null 2>&1 && fp_log start "===== ./forensic.sh start ($(date)) ====="
 
   # PHASE 1 — Pré-installation (packages + groupe docker + sysctl)
-  if command -v pre_install >/dev/null 2>&1; then
-    pre_install || warn "pre_install: certaines vérifications ont échoué (voir logs/forensic_install.log)"
+  if [ "${FP_ORCH_PREAMBLE_DONE:-0}" != "1" ]; then
+    if command -v pre_install >/dev/null 2>&1; then
+      pre_install || warn "pre_install: certaines vérifications ont échoué (voir logs/forensic_install.log)"
+    fi
   fi
 
   # Docker obligatoire avant toute opération compose/réseau
@@ -1077,6 +1148,11 @@ full_start() {
   docker compose up -d --build ingest-worker 2>/dev/null || $UP ingest-worker
   $UP cert-portal it-portal
   sleep 8
+  if [ "${FP_FULL_ORCHESTRATOR:-0}" = "1" ] && [ -x "$DIR/scripts/helk_velociraptor_master_setup.sh" ]; then
+    step "6a/8 Sidecars HELK / Velociraptor (avant Nginx)"
+    bash "$DIR/scripts/helk_velociraptor_master_setup.sh" 2>&1 \
+      | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" || warn "HELK/VR setup partiel"
+  fi
   $UP nginx
 
   START_OK+=("Services Docker (8 phases stack)")
@@ -2606,11 +2682,11 @@ urls() {
 # ──────────────────────────────────────────────────────────────
 case "${1:-help}" in
   start|all)      start ;;
-  full-start|full) FP_FULL_BOOT=1 full_start ;;
+  -full-start|full-start|full) full_start_orchestrator ;;
   full-stop)      stop ;;
   full-restart)   restart ;;
   check-health)   health ;;
-  rebuild)        FP_FULL_BOOT=1 full_start ;;
+  rebuild)        full_start_orchestrator ;;
   open-ui|ui)     open_ui ;;
   start-logs)     start_logs "${2:-100}" ;;
   ui-campaign)    python3 "$DIR/scripts/ui_campaign_verify.py" ;;
@@ -3044,8 +3120,9 @@ case "${1:-help}" in
     echo -e "${CYAN}Forensic Platform v2.1${NC}"
     echo ""
     echo "  start | all       ⚡ FAST-BOOT — deps + réseau + up (--no-build --pull never) + status"
-    echo "  full-start | full 🏗️  FULL-BOOT — build + patchs + QA + attentes longues"
-    echo "  rebuild           🏗️  FULL-BOOT avec build des images (alias full-start)"
+    echo "  -full-start       🚀 ORCHESTRATEUR — install + build + start + test + rapport (machine vierge)"
+    echo "  full-start | full 🏗️  alias -full-start (orchestrateur complet)"
+    echo "  rebuild           🏗️  alias -full-start (orchestrateur complet)"
     echo "  install           PHASE 0 — Pré-installation packages + sysctl + groupe docker"
     echo "  cleanup-processes PHASE 2 — Tuer anciens processus FP"
     echo "  cleanup-ports     PHASE 2 — Vérifier/libérer ports critiques (FP_KILL_PORTS=1 pour kill)"

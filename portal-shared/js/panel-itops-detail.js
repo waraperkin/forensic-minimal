@@ -48,12 +48,10 @@
         )}
         ${actionsRow(btnOpen(i18n.t('msg.ouvrir_supervision'), 'data-pd-open-svcs'))}`;
 
-      const sVigil = window.VigilIntegration ? await VigilIntegration.buildItOpsVigilHtml() : '';
       const sections = [
         { id: 'section-1', title: 'Exposition IT', html: s1 },
         { id: 'section-2', title: i18n.t('msg.inventaire_jetons'), html: s2, exportTable: { rows: tokList.map((t) => ({ case_id: t.case_id, status: t.status })), cols: [{ key: 'case_id', label: 'Case' }, { key: 'status', label: 'Statut' }] } },
         { id: 'section-3', title: i18n.t('hubs.it_health.title'), html: s3, exportTable: { rows: services.map((s) => ({ name: s.name, status: s.status })), cols: [{ key: 'name', label: 'Service' }, { key: 'status', label: 'Statut' }] } },
-        { id: 'section-vigil-agents', title: i18n.t('vigil.it_agents_title'), html: sVigil },
       ];
 
       const page = renderPage(PANEL, null, null, sections, {
@@ -67,7 +65,6 @@
       page?.querySelector('[data-pd-open-svcs]')?.addEventListener('click', () => {
         if (typeof window.tab === 'function') window.tab('svcs');
       });
-      if (window.VigilIntegration) VigilIntegration.bindVigilActions(page || el);
     } catch (e) {
       el.innerHTML = `<p class="fp-alert fp-alert-err">${C().esc(e.message)}</p>`;
     }

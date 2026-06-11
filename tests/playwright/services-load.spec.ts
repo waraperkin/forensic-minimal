@@ -9,7 +9,6 @@ const routes = [
   { name: 'Cortex', path: '/cortex/' },
   { name: 'MinIO', path: '/minio/' },
   { name: 'Grafana', path: '/grafana/' },
-  { name: 'VigilSOC', path: '/vigilsoc/' },
 ];
 
 for (const route of routes) {

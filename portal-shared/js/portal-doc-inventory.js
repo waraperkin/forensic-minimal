@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Documentation Premium++ — inventaire outils, chemins fichiers, interconnexions.
+ * Inventaire plateforme — outils, chemins fichiers, interconnexions.
  */
 (function () {
   const esc = (s) => String(s ?? '')
@@ -100,7 +100,6 @@
       host.innerHTML = `
         <div class="portal-doc-premium-plus">
           <div class="portal-doc-pp-hero">
-            <span class="portal-doc-pp-badge">Premium++</span>
             <h3>${esc(i18n.t('docs.inventory.hero_title'))}</h3>
             <p>${esc(i18n.t('docs.inventory.hero_lead'))}</p>
             <p class="fp-muted">v${esc(data.version)} · ${data.tools?.length || 0} ${esc(i18n.t('docs.inventory.tool_count'))}</p>

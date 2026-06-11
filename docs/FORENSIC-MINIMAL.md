@@ -21,7 +21,7 @@ Version minimaliste SOC-grade de la plateforme forensic CYBERCORP.
     │  PostgreSQL · Redis · RabbitMQ · Cassandra │
     │  MinIO · OpenSearch · Logstash · Ingest    │
     │  Timesketch · OpenCTI · MISP · TheHive     │
-    │  Cortex · Grafana · VigilSOC UI/Connector  │
+    │  Cortex · Grafana                          │
     └───────────────────────────────────────────┘
 ```
 
@@ -60,7 +60,6 @@ Démarrage rapide (sans rebuild) : `./forensic.sh start`
 | Cortex | Analyseurs / responders |
 | MinIO | Stockage objets (evidences) |
 | Grafana | Observabilité |
-| VigilSOC UI + Connector | Console SOC unifiée |
 | CERT / IT Portals | Portails opérationnels |
 
 ## URLs (via Nginx HTTPS)
@@ -79,8 +78,6 @@ Remplacez `<IP>` par l'IP de la machine (`hostname -I`).
 | Cortex | `https://<IP>/cortex/` |
 | MinIO | `https://<IP>/minio/` |
 | Grafana | `https://<IP>/grafana/` |
-| VigilSOC | `https://<IP>/vigilsoc/` |
-
 Timesketch direct : `http://<IP>:5000/`
 
 ## Health checks

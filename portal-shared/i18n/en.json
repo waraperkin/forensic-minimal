@@ -101,7 +101,9 @@
     "soc_investigation": "Assisted Investigation",
     "soc_autonomous": "SOC Analysis",
     "users": "Portal Accounts",
-    "settings_admin": "Administration"
+    "settings_admin": "Administration",
+    "helk_hunting": "HELK Hunting",
+    "velociraptor_dfir": "Velociraptor DFIR"
   },
   "header": {
     "brand_sub": "CERT / forensic operations center",
@@ -252,47 +254,6 @@
     "search_placeholder": "Search activity log…",
     "visible_count": "{n} event(s) shown of {total}"
   },
-  "vigil": {
-    "panel_title": "VigilSOC",
-    "kpi_alerts": "VigilSOC Alerts",
-    "kpi_ioc": "VigilSOC IOC",
-    "kpi_assets": "VigilSOC Assets",
-    "connector": "VigilSOC connector",
-    "mode": "Mode",
-    "open": "Open in VigilSOC",
-    "force_scan": "Force VigilSOC scan",
-    "scan_ok": "VigilSOC scan complete",
-    "filter_only": "VigilSOC only",
-    "audit_sync": "VigilSOC sync — alerts/IOC/assets inventory",
-    "col_status": "vigil_status",
-    "health_title": "VigilSOC health",
-    "latency": "Latency",
-    "api_status": "API status",
-    "no_errors": "No errors",
-    "it_agents_title": "VigilSOC agents",
-    "agents_summary": "{online} agent(s) online of {total}",
-    "upload_hint": "Uploaded evidence can be correlated with VigilSOC alerts.",
-    "tokens_hint": "IT tokens can trigger VigilSOC cross-investigations.",
-    "ui_nav": "VigilSOC",
-    "ui_section": "VigilSOC",
-    "ui_console": "VigilSOC Console",
-    "ui_console_hint": "Operational console — open",
-    "tools_title": "VigilSOC API",
-    "tools_health": "VigilSOC connector health",
-    "tools_alerts": "VigilSOC alerts inventory",
-    "tools_ioc": "VigilSOC IOC inventory",
-    "tools_assets": "VigilSOC assets inventory",
-    "tools_timesketch": "Export alert/IOC/asset to Timesketch",
-    "tools_e2e": "VigilSOC E2E incident scenario",
-    "e2e_incident": "VigilSOC E2E incident",
-    "e2e_view": "View E2E incident",
-    "e2e_none": "No E2E run — click to start",
-    "e2e_ready": "E2E incident ready",
-    "e2e_run": "Run E2E incident",
-    "e2e_ok": "E2E scenario complete",
-    "e2e_running": "E2E scenario running…",
-    "export_timesketch": "Export to Timesketch"
-  },
   "health": {
     "it_systems_title": "IT System Health",
     "portal_it": "IT Portal"
@@ -356,9 +317,9 @@
     "lead": "Analyst procedures, tutorials, demo mode and release notes.",
     "tour_overview": "1/5 — Overview: SOC health and tool links.",
     "tour_docs": "2/5 — Documentation: full platform architecture and analyst guides.",
-    "tour_rules": "3/5 — Sekoia rules: inventory and filters.",
-    "tour_ai": "4/5 — SOC Assistant: query and rule help (to be validated).",
-    "tour_audit": "5/5 — Audit center: change history.",
+    "tour_helk": "3/5 — HELK Hunting: lab ingest, Sigma, OpenSearch sync.",
+    "tour_velociraptor": "4/5 — Velociraptor DFIR: collection and offline playbooks.",
+    "tour_ai": "5/5 — SOC Assistant: query and rule help (to be validated).",
     "filters_help": "Filters & actions — exports and refresh. No writes in demo mode.",
     "help_label": "Contextual help"
   },
@@ -696,7 +657,46 @@
     "url_for_it": "URL for the IT team:",
     "token_log_case": "Token generated for case {case}",
     "copy_url_btn": "📋 Copy URL",
-    "default_file": "file"
+    "default_file": "file",
+    "helk_send": "Send to HELK (hunting)"
+  },
+  "helk": {
+    "module_title": "HELK Hunting",
+    "module_lead": "HELK sidecar stack — Kibana, hunts, Sigma detections, Timesketch exports and OpenSearch findings.",
+    "send_to_helk": "Send to HELK (hunting)",
+    "sync_assets_logs": "Sync assets/logs to HELK",
+    "badge_active": "HELK hunting active",
+    "badge_offline": "HELK unavailable",
+    "status_loading": "HELK status…",
+    "link_label": "Link",
+    "export_timesketch_btn": "Export HELK timeline to Timesketch",
+    "sync_opensearch_btn": "Sync findings → OpenSearch",
+    "export_cti_btn": "Export IOC → CTI/IR",
+    "hunt_overview_btn": "HELK Hunting Overview",
+    "export_running": "Timesketch export running…",
+    "export_ok": "Timesketch export started",
+    "export_fail": "Timesketch export failed",
+    "sync_running": "OpenSearch sync running…",
+    "sync_ok": "HELK → OpenSearch sync done",
+    "sync_fail": "HELK sync failed",
+    "cti_running": "CTI/IR push running…",
+    "cti_ok": "IOCs pushed to CTI/IR",
+    "cti_fail": "CTI export failed"
+  },
+  "velociraptor": {
+    "module_title": "Velociraptor DFIR",
+    "module_lead": "Advanced collection, Windows/Linux agents, automatic export to CERT, OpenSearch, Timesketch and IR.",
+    "badge_active": "Velociraptor active",
+    "badge_offline": "Velociraptor unavailable",
+    "badge_managed": "Endpoint managed by Velociraptor",
+    "badge_collected": "Collected via Velociraptor",
+    "status_loading": "Velociraptor status…",
+    "link_label": "Link",
+    "export_timesketch_btn": "Create Timesketch timeline from Velociraptor",
+    "export_full_btn": "Full platform export",
+    "export_running": "Velociraptor export running…",
+    "export_ok": "Velociraptor export completed",
+    "export_fail": "Velociraptor export failed"
   },
   "stats": {
     "uploads_cert": "CERT Uploads",
@@ -749,7 +749,7 @@
     "cert_ops": "CERT Operations",
     "it_ops": "IT Operations",
     "references": "Analyst references",
-    "platform_doc": "Full platform documentation: Docker architecture, ingestion, CTI, observability, security — plus Sekoia, SentinelOne and CERT tool guides."
+    "platform_doc": "Platform documentation: architecture (diagrams), HELK, Velociraptor, OpenSearch, CTI, IR and CERT tools."
   },
   "table": {
     "intake": "Intake",
@@ -1455,7 +1455,7 @@
       "reference": "Reference"
     },
     "platform_inventory": {
-      "title": "Premium++ tools inventory",
+      "title": "Platform tools inventory",
       "body": ""
     },
     "inventory": {
@@ -1499,47 +1499,51 @@
     "api": {
       "tokens_warning": "Copy endpoints from the Access Center. Do not expose tokens outside the portal session.",
       "title": "Internal APIs",
-      "body": "<div class=\"portal-doc-article\"><h3>CERT portal REST API</h3><p>All routes require an <strong>authenticated session</strong> (cookie) except <code>/api/auth/login</code>.</p><table class=\"portal-doc-table\"><thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead><tbody><tr><td>GET</td><td><code>/api/overview/*</code></td><td>Service health, ingest, CTI</td></tr><tr><td>GET</td><td><code>/api/master/*</code></td><td>Incidents, KB, dashboards</td></tr><tr><td>POST</td><td><code>/api/upload</code></td><td>Evidence upload</td></tr><tr><td>GET</td><td><code>/api/threat/sekoia/*</code></td><td>Sekoia proxy</td></tr><tr><td>GET</td><td><code>/api/threat/s1/*</code></td><td>SentinelOne proxy</td></tr></tbody></table><p>Full list in <strong>Access Center</strong>.</p></div>"
+      "body": "<div class=\"portal-doc-article\"><p class=\"portal-doc-lead\">CERT portal REST API (<code>portal-cert/server.js</code>) with HELK/Velociraptor bridge proxies. Base: <code>https://&lt;IP&gt;/</code>. Auth: HttpOnly session cookie (except login/health).</p><h4>Authentication</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead><tbody><tr><td>POST</td><td><code>/api/auth/login</code></td><td>Login, session creation</td></tr><tr><td>POST</td><td><code>/api/auth/logout</code></td><td>Logout</td></tr><tr><td>GET</td><td><code>/api/auth/session</code></td><td>Current session</td></tr><tr><td>POST</td><td><code>/api/auth/mfa</code></td><td>TOTP validation</td></tr></tbody></table><h4>Health &amp; configuration</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>GET</th><th>Path</th><th>Description</th></tr></thead><tbody><tr><td></td><td><code>/api/health</code></td><td>Portal health</td></tr><tr><td></td><td><code>/api/health/global</code></td><td>11+ SOC services aggregation</td></tr><tr><td></td><td><code>/api/&lt;service&gt;/health</code></td><td>Individual service health</td></tr><tr><td></td><td><code>/api/config</code></td><td>Front configuration</td></tr></tbody></table><h4>Upload, tokens &amp; statistics</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead><tbody><tr><td>POST</td><td><code>/api/upload</code></td><td>Evidence upload → MinIO + Redis (max 100 files, 5.4 GB)</td></tr><tr><td>GET</td><td><code>/api/uploads</code></td><td>CERT upload list</td></tr><tr><td>DELETE</td><td><code>/api/uploads/:docId</code></td><td>Delete upload</td></tr><tr><td>POST</td><td><code>/api/tokens/generate</code></td><td>IT portal upload token</td></tr><tr><td>GET</td><td><code>/api/tokens</code></td><td>Active tokens</td></tr><tr><td>GET</td><td><code>/api/stats</code></td><td>Real-time OpenSearch stats</td></tr><tr><td>GET</td><td><code>/api/stats/parsing</code></td><td>Parsing by category</td></tr><tr><td>GET</td><td><code>/api/cases</code></td><td>Forensic case list</td></tr></tbody></table><h4>HELK proxy (<code>helk-routes.js</code> → bridge :8090)</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Method</th><th>Portal path</th><th>Bridge action</th></tr></thead><tbody><tr><td>GET</td><td><code>/api/helk/status</code></td><td>Health + dashboards</td></tr><tr><td>POST</td><td><code>/api/helk/lab/ingest</code></td><td>Offline lab ingest</td></tr><tr><td>POST</td><td><code>/api/helk/sync</code></td><td>Sync findings → FP OpenSearch</td></tr><tr><td>POST</td><td><code>/api/helk/export-timesketch</code></td><td>Timeline export</td></tr><tr><td>POST</td><td><code>/api/helk/export-cti</code></td><td>IOC export to OpenCTI</td></tr><tr><td>GET</td><td><code>/api/helk/hunt-url</code></td><td>Kibana/Grafana pivot URLs</td></tr></tbody></table><h4>Velociraptor proxy (<code>velociraptor-routes.js</code> → bridge :8097)</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead><tbody><tr><td>GET</td><td><code>/api/velociraptor/status</code></td><td>Status + playbooks</td></tr><tr><td>POST</td><td><code>/api/velociraptor/lab/collect-full</code></td><td>Offline DFIR collection</td></tr><tr><td>POST</td><td><code>/api/velociraptor/collect</code></td><td>Live collection (agent)</td></tr><tr><td>POST</td><td><code>/api/velociraptor/export/full</code></td><td>OS + MinIO export</td></tr><tr><td>POST</td><td><code>/api/velociraptor/export/timesketch</code></td><td>Create Timesketch sketch</td></tr></tbody></table><h4>Master IR (<code>master-routes.js</code>)</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Path</th><th>OpenSearch index</th></tr></thead><tbody><tr><td><code>/api/master/incidents</code></td><td><code>forensic-portal-incidents</code></td></tr><tr><td><code>/api/master/tickets</code></td><td><code>forensic-portal-tickets</code></td></tr><tr><td><code>/api/master/kb</code></td><td><code>forensic-portal-kb</code></td></tr><tr><td><code>/api/master/assets</code></td><td><code>forensic-portal-assets</code></td></tr><tr><td><code>/api/master/ingest_errors</code></td><td>Ingest parsing errors</td></tr><tr><td><code>/api/master/ingest_status</code></td><td>Ingest queue status</td></tr></tbody></table><h4>WebSocket &amp; error codes</h4><ul><li><code>/ws/logs</code> — upload console log stream</li><li><strong>401</strong> invalid session/token · <strong>413</strong> file too large · <strong>502</strong> bridge unreachable · <strong>503</strong> backend down</li></ul><p class=\"fp-muted\">IT portal: same HELK/VR proxies + <code>/api/token/verify</code>. Reference: <code>docs/PORTAL/API.md</code>.</p></div>"
     },
-    "sekoia": {
-      "title": "Sekoia.IO",
-      "body": "<div class=\"portal-doc-article\"><h3>Sekoia.IO — analyst guide</h3><p>Manage cloud detection perimeter: intakes, Sigma rules, API keys, targeted event collection.</p><ul><li>Assets, Rules, API Keys, On-demand Telemetry, Control Center.</li><li>JWT <code>SEKOIA_UI_TOKEN</code> required in Platform Configuration.</li><li>Always filter by hostname/IP before bulk fetch.</li></ul></div>"
+    "helk": {
+      "title": "HELK Hunting",
+      "help": "Sysmon/Linux/Zeek hunting, offline lab ingest, OpenSearch sync, Timesketch/CTI export.",
+      "body": "<div class=\"portal-doc-article\"><p class=\"portal-doc-lead\">HELK sidecar stack for Sysmon, Linux auditd, Zeek hunting and Sigma/MITRE detections — integrated via <code>helk-integration.js</code> and <code>helk-bridge:8090</code>.</p><h4>Access</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Interface</th><th>URL</th></tr></thead><tbody><tr><td>Hunting Kibana</td><td><code>/helk/kibana/</code></td></tr><tr><td>HELK ES API</td><td><code>/helk/api/</code></td></tr><tr><td>Grafana MITRE/Sigma</td><td><code>/grafana/</code> <code>helk-*</code> dashboards</td></tr><tr><td>Portal panel</td><td>HELK Hunting tab</td></tr></tbody></table><h4>Operational flow</h4><pre class=\"mermaid\">flowchart LR\n  UI[HELK panel] --> API[POST /api/helk/lab/ingest]\n  API --> BR[helk-bridge]\n  BR --> LS[Logstash 0010-0099]\n  LS --> HES[(HELK ES)]\n  UI --> SYNC[POST /api/helk/sync]\n  SYNC --> OS[(helk-findings)]</pre><h4>Analyst actions</h4><ul><li><strong>Send to HELK</strong> — offline lab ingest from <code>lab-sources/</code></li><li><strong>Sync findings → OpenSearch</strong> — <code>helk-findings</code>, <code>helk-detections</code></li><li><strong>Export Timesketch timeline</strong></li><li><strong>Export IOC CTI</strong> — <code>POST /api/helk/export-cti</code></li><li>Host/IOC pivots from Kibana or Grafana <code>helk-mitre</code></li></ul><p class=\"fp-muted\">Pipelines: <code>helk/logstash/pipelines/</code>. See <code>docs/PORTAL/HELK.md</code>.</p></div>"
     },
-    "sentinelone": {
-      "title": "SentinelOne",
-      "body": "<div class=\"portal-doc-article\"><h3>SentinelOne — analyst guide</h3><p>EDR agents, policies, API tokens, threats/activities collection. Correlate with Sekoia via XDR View.</p></div>"
+    "velociraptor": {
+      "title": "Velociraptor DFIR",
+      "help": "Endpoint collection, offline playbooks, OpenSearch/Timesketch export.",
+      "body": "<div class=\"portal-doc-article\"><p class=\"portal-doc-lead\">Velociraptor provides endpoint DFIR collection (live or offline lab) via <code>velociraptor-bridge:8097</code> and the <strong>Velociraptor DFIR</strong> panel.</p><h4>Access</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Interface</th><th>URL / API</th></tr></thead><tbody><tr><td>Admin GUI</td><td><code>/velociraptor/</code></td></tr><tr><td>Bridge API</td><td><code>/velociraptor/api/*</code> (nginx priority)</td></tr><tr><td>Offline collection</td><td><code>POST /api/velociraptor/lab/collect-full</code></td></tr><tr><td>Live collection</td><td><code>POST /api/velociraptor/collect</code> + agent</td></tr></tbody></table><h4>Collection flow</h4><pre class=\"mermaid\">flowchart TB\n  P[VR portal] --> OFF[Offline lab collect]\n  P --> LIVE[Live agent collect]\n  OFF & LIVE --> VB[velociraptor-bridge]\n  VB --> OS[(velociraptor-*)]\n  VB --> MIO[(MinIO)]\n  VB --> TS[Timesketch]</pre><h4>Playbooks &amp; artefacts</h4><ul><li><code>windows-triage-full</code>, <code>linux-triage-full</code>, <code>memory-forensics</code></li><li>ForensicFull YAML artefacts in <code>velociraptor/artifacts/</code></li><li>Multi-target export: OpenSearch, MinIO, Timesketch, CERT download</li><li>Grafana: <code>vraptor-windows-full</code>, <code>vraptor-linux-full</code></li></ul><p class=\"fp-muted\">See <code>docs/PORTAL/VELOCIRAPTOR.md</code>.</p></div>"
     },
-    "governance": {
-      "title": "Governance",
-      "body": "<div class=\"portal-doc-article\"><h3>Governance — consolidated inventories</h3><p>Merged Sekoia + SentinelOne assets, rules, API keys. Saved views via <code>/api/threat/views</code>.</p></div>"
+    "opensearch": {
+      "title": "OpenSearch",
+      "help": "Central SIEM — Dashboards, forensic-*, helk-*, velociraptor-* indices.",
+      "body": "<div class=\"portal-doc-article\"><p class=\"portal-doc-lead\">OpenSearch is the FP-Master central SIEM: 2-node cluster, Dashboards, ingestion via worker/Logstash/Filebeat and HELK/Velociraptor sync.</p><h4>Access &amp; components</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Component</th><th>Role</th></tr></thead><tbody><tr><td>OpenSearch Dashboards</td><td><code>/dashboards/</code> — Discover, OSD playbooks</td></tr><tr><td>ingest-worker</td><td>EVTX/CSV/Plaso parsers → bulk index</td></tr><tr><td>FP Logstash</td><td>Beats, syslog, HEC → indices</td></tr><tr><td>Filebeat</td><td>Docker container logs</td></tr></tbody></table><h4>Data sources</h4><pre class=\"mermaid\">flowchart LR\n  UP[Portal upload] --> IW[ingest-worker]\n  LS[Logstash] --> OS[(OpenSearch)]\n  HB[helk-bridge sync] --> OS\n  VB[velociraptor-bridge] --> OS\n  IW --> OS</pre><h4>Key indices</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Pattern</th><th>Content</th></tr></thead><tbody><tr><td><code>forensic-uploads*</code></td><td>Upload metadata</td></tr><tr><td><code>forensic-windows-*</code></td><td>Parsed EVTX events</td></tr><tr><td><code>helk-findings</code></td><td>HELK sync detections</td></tr><tr><td><code>velociraptor-*</code></td><td>DFIR collections</td></tr><tr><td><code>fp-ti-*</code></td><td>OpenCTI/MISP IOC</td></tr></tbody></table><p class=\"fp-muted\">Portal KPI <strong>OPENSEARCH CLUSTER</strong>. See <code>docs/PORTAL/OPENSEARCH.md</code>.</p></div>"
     },
     "certtools": {
       "title": "CERT tools",
-      "body": "<div class=\"portal-doc-article\"><h3>CERT investigation tools</h3><p>Asset Investigation, Timeline Builder, IOC Correlation, Assisted Investigation, SOC Analysis, XDR View.</p></div>"
+      "body": "<div class=\"portal-doc-article\"><p class=\"portal-doc-lead\">CERT investigation modules integrated in the portal to correlate hosts, IOCs and timelines — complemented by HELK/Velociraptor/OpenSearch pivots and master IR. Implementation: <code>portal-shared/js/cert-tools.js</code>, <code>soc-pivot-links.js</code>, <code>panel-incidents-detail.js</code>.</p><h4>Investigation workflow</h4><pre class=\"mermaid\">flowchart LR\n  INC[Master incident CASE-001] --> UP[Upload evidences]\n  UP --> INV[Asset investigation]\n  INV --> TL[Timeline Builder]\n  INV --> IOC[IOC Correlation]\n  TL --> TS[Timesketch]\n  IOC --> OS[OpenSearch + CTI]\n  INV --> HELK[HELK pivots]\n  INV --> VR[Velociraptor DFIR]</pre><h4>Tool tabs (References sidebar)</h4><table class=\"portal-doc-table\"><thead><tr><th>Tab</th><th>Panel ID</th><th>Analyst function</th><th>Inputs</th></tr></thead><tbody><tr><td>Asset investigation</td><td><code>cert-asset-investigation</code></td><td>Cross-view events by hostname, IP or agent ID — stats and detail table</td><td>Hostname, IP, agentId, time range</td></tr><tr><td>Timeline Builder</td><td><code>cert-timeline-builder</code></td><td>Sorted chronological view, hourly histogram, Timesketch export</td><td>Same form + Timesketch option</td></tr><tr><td>IOC Correlation</td><td><code>cert-ioc-correlation</code></td><td>Multi-IOC search (IP, domain, hash) over 24h/7d/30d — hits per source and chart</td><td>IOC list (one per line)</td></tr><tr><td>Assisted investigation</td><td><code>soc-investigation-assisted</code></td><td>Local NLP analysis, suggested pivots, timeline, SOC Assistant link</td><td>Natural language description</td></tr><tr><td>Autonomous SOC analysis</td><td><code>soc-autonomous</code></td><td>Periodic rules/intakes scan, anomalies, recommendations, correlation</td><td>Auto scan every 2 min</td></tr></tbody></table><h4>FP-Master platform complements</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Area</th><th>Complementary usage</th></tr></thead><tbody><tr><td>Incidents (<code>cases</code>)</td><td>IR case CRUD — <code>POST /api/master/incidents</code></td></tr><tr><td>HELK Hunting</td><td>Host/IOC pivots → Kibana, Grafana MITRE — <code>GET /api/helk/hunt-url</code></td></tr><tr><td>Velociraptor DFIR</td><td>Offline/live collection, OS/TS export</td></tr><tr><td>OpenSearch Dashboards</td><td>Queries on <code>forensic-*</code>, <code>helk-*</code>, <code>velociraptor-*</code></td></tr><tr><td>CTI tab</td><td>Correlation on <code>fp-ti-opencti-*</code>, <code>fp-ti-misp-*</code></td></tr></tbody></table><h4>Typical OpenSearch queries (pivots)</h4><ul><li>Host: <code>_index:helk-sysmon-* AND host.name:\"lab-win01\"</code></li><li>IOC IP: <code>source.ip:\"10.0.0.5\" OR destination.ip:\"10.0.0.5\"</code></li><li>Case: <code>case_id:\"CASE-001\"</code></li></ul><h4>Best practices</h4><ol><li>Create master incident before upload (consistent case_id)</li><li>Validate all IOC/report exports before external send</li><li>Chain Timeline Builder → Timesketch → incident closure</li><li>Use HELK/VR pivots rather than scattered manual searches</li></ol><p class=\"fp-muted\">Scenarios: <code>docs/PORTAL/SCENARIOS.md</code>, pivots: <code>docs/PORTAL/PIVOTS.md</code>.</p></div>"
     },
     "timesketch": {
       "title": "Timesketch",
-      "body": "<div class=\"portal-doc-article\"><h3>Timesketch — timeline investigation</h3><p>Access <code>/timesketch/</code>. Auto-import from ingest-worker or manual export from Sekoia/CERT tools. Strict 9-column CSV format.</p></div>"
+      "body": "<div class=\"portal-doc-article\"><p class=\"portal-doc-lead\">Timesketch is the platform forensic timeline tool: chronological consolidation of ingested events, exports from HELK or Velociraptor, with annotation and sharing for the IR team.</p><h4>Access</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Interface</th><th>URL</th></tr></thead><tbody><tr><td>Web UI</td><td><code>https://&lt;IP&gt;/timesketch/</code></td></tr><tr><td>REST API</td><td><code>/api/v1/</code> (absolute nginx proxy)</td></tr><tr><td>Direct sketch</td><td><code>/sketch/&lt;id&gt;</code></td></tr></tbody></table><h4>Import flow</h4><pre class=\"mermaid\">flowchart TB\n  subgraph sources [Data sources]\n    UP[Portal upload ingest-worker]\n    HELK[HELK export /api/helk/export-timesketch]\n    VR[VR export /api/velociraptor/export/timesketch]\n    TB[CERT Timeline Builder]\n  end\n  subgraph ts [Timesketch]\n    IO[timesketch_io.py]\n    API[Timesketch API]\n    SK[Sketch by case_id]\n  end\n  UP & HELK & VR & TB --> IO --> API --> SK</pre><h4>Formats &amp; parsers</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Source</th><th>Worker file</th><th>Format</th></tr></thead><tbody><tr><td>EVTX / logs</td><td><code>timesketch_pipeline.py</code></td><td>Normalized events</td></tr><tr><td>CSV timeline</td><td><code>parsers/timesketch_csv.py</code></td><td><strong>9 mandatory columns</strong> (datetime, message, timestamp_desc…)</td></tr><tr><td>Plaso</td><td>ingest pipeline</td><td>Automatic sketch import</td></tr></tbody></table><h4>Configuration</h4><ul><li><code>config/timesketch/timesketch.conf</code> — main config</li><li><code>config/timesketch/sigma_config.yaml</code> — Sigma rules</li><li><code>config/timesketch/playbooks.json</code> — analyst playbooks</li><li>Docker services: <code>timesketch-web</code>, <code>timesketch-worker</code>, <code>timesketch-init</code></li></ul><h4>Analyst workflow (lab case CASE-001)</h4><ol><li>Upload EVTX with <code>case_id=CASE-001</code> → auto import by ingest-worker</li><li>Or HELK panel → <strong>Export Timesketch timeline</strong></li><li>Or VR panel → <strong>Create Timesketch timeline</strong></li><li>Open <code>/timesketch/</code> → sketch linked to case</li><li>Apply playbooks, annotate suspicious events</li><li>Share sketch link; link observables to TheHive case if needed</li></ol><h4>Portal pivots</h4><p><strong>Timesketch timeline</strong> buttons in HELK and Velociraptor panels open the sketch for the current case. Grafana: provisioned dashboard <code>config/grafana/provisioning/dashboards/timesketch.yml</code>.</p><p class=\"fp-muted\">Docs: <code>docs/PORTAL/TIMESKETCH.md</code>. Test: <code>npx playwright test ui-timesketch.spec.ts</code>.</p></div>"
     },
     "intelligence": {
       "title": "SOC Assistant",
-      "body": "<div class=\"portal-doc-article\"><h3>SOC Assistant</h3><p>Local help for queries, Sigma rules, dashboards, pivots. API: <code>window.PortalAI</code>. Always validate in staging.</p></div>"
+      "body": "<div class=\"portal-doc-article\"><p class=\"portal-doc-lead\">Integrated SOC Assistant (<code>portal-ai.js</code> + <code>portal-ai-autonomous.js</code>): <strong>local heuristic</strong> processing (FR/EN) to generate queries, Sigma rules, dashboards and summaries — no external cloud call. Header button <strong>SOC Assistant</strong> or Assisted investigation / Autonomous SOC analysis tabs.</p><h4>Assistant drawer modes</h4><table class=\"portal-doc-table\"><thead><tr><th>Mode</th><th>Example input</th><th>Generated outputs</th></tr></thead><tbody><tr><td>Query</td><td><em>auth failures on lab-win01 24h</em></td><td>OpenSearch DSL, Timesketch CSV, search terms</td></tr><tr><td>Rule</td><td><em>obfuscated PowerShell</em></td><td>Sigma YAML, OpenSearch Detection rule</td></tr><tr><td>Dashboard</td><td><em>auth failures dashboard</em></td><td>Grafana dashboard JSON (API save)</td></tr><tr><td>Asset</td><td>hostname / IP</td><td>Inventory correlation + volume</td></tr><tr><td>Event</td><td>event description</td><td>Classification, suggested pivots</td></tr><tr><td>Analyze rule</td><td>pasted Sigma YAML</td><td>Structure analysis, FP risks, improvements</td></tr><tr><td>Correlation</td><td>multi-source context</td><td>Correlated intakes/rules terms</td></tr><tr><td>Investigation</td><td>full NL description</td><td>Summary, pivots, timeline, export</td></tr></tbody></table><h4>Options &amp; explanations</h4><ul><li><strong>Extended context</strong> — enriches with intakes/rules/modules cache</li><li><strong>Risk details</strong> — Why / How / Risks blocks per result</li><li>Copy JSON result, ECharts graphs on timelines</li></ul><h4>Autonomous SOC analysis 2.0</h4><pre class=\"mermaid\">flowchart LR\n  SCAN[Auto scan 2 min] --> CACHE[Rules/intakes cache]\n  CACHE --> ANOM[Anomaly detection]\n  ANOM --> REC[Recommendations]\n  REC --> UI[soc-autonomous tab]\n  UI --> INV[Assisted investigation link]</pre><p>Features: periodic scan, incident/anomaly scoring, generated rules, <code>localStorage</code> persistence (<code>cc-soc-autonomous-v2</code>), overview/timeline/recommendations views.</p><h4>Audit center integration</h4><p>Hook on audit load: summary enrichment, AI-assisted audit JSON export.</p><h4>⚠️ Analyst usage rules</h4><ol><li><strong>Always validate</strong> queries and rules before production deployment</li><li>Prefer <strong>OpenSearch DSL</strong> output for FP-Master SIEM</li><li>Test Sigma rules in staging, measure false positives over 7 days</li><li>Do not treat the assistant as source of truth — corroborate with HELK/OSD/CTI</li><li>Documentation demo mode: destructive actions blocked</li></ol><p class=\"fp-muted\">Files: <code>portal-shared/js/portal-ai.js</code>, <code>portal-ai-autonomous.js</code>, <code>portal-ai.css</code>.</p></div>"
     },
     "tutorials": {
       "title": "Tutorials",
-      "body": "<div class=\"portal-doc-article\"><h3>Recommended analyst path</h3><ol><li>Overview — check KPIs.</li><li>Platform docs — read Full architecture.</li><li>Configure Sekoia JWT.</li><li>Sekoia rules inventory.</li><li>Targeted fetch on lab host.</li><li>SOC Assistant test query.</li><li>Audit center review.</li></ol><button type=\"button\" class=\"fp-btn fp-btn-primary fp-btn-sm\" id=\"portal-doc-start-tour\">Start guided tutorial</button></div>"
+      "body": "<div class=\"portal-doc-article\"><p class=\"portal-doc-lead\">Recommended analyst paths for the FP-Master platform. Default lab case: <code>CASE-001</code>, hosts <code>lab-win01</code> / <code>lab-linux01</code>. Full detail: <code>docs/PORTAL/SCENARIOS.md</code>.</p><h4>1. Incident 360° (end to end)</h4><pre class=\"mermaid\">flowchart TD\n  A[Create incident CASE-001] --> B[Upload EVTX + HELK option]\n  B --> C[Sync helk-findings]\n  C --> D[VR offline collection]\n  D --> E[Timesketch timeline]\n  E --> F[Export IOC OpenCTI]\n  F --> G[TheHive case + Cortex]\n  G --> H[Close + KB article]</pre><ol><li><strong>Incidents</strong> → create <code>CASE-001</code>, High priority</li><li><strong>Ingestion</strong> → upload logs, check Send to HELK if needed</li><li><strong>HELK</strong> → Sync findings → OpenSearch</li><li><strong>Velociraptor</strong> → offline collection <code>windows-triage-full</code></li><li><strong>Timesketch</strong> → consolidate timeline</li><li><strong>CTI</strong> → export IOC, validate OpenCTI/MISP</li><li><strong>TheHive</strong> → IR case, observables, Cortex</li></ol><h4>2. Endpoint 360° (lab-win01)</h4><ol><li>HELK → Host <code>lab-win01</code> → Open in HELK</li><li>Grafana <code>helk-sysmon</code> — Sysmon activity 24h</li><li>VR → playbook <code>windows-triage-full</code>, offline collection</li><li>OSD: <code>_index:velociraptor-* AND host.name:lab-win01</code></li><li>MITRE/Sigma pivots, <code>vraptor-windows-full</code> dashboard</li></ol><h4>3. Threat 360° (IOC)</h4><ol><li>CTI → OpenCTI campaign context</li><li>MISP → correlate events</li><li>HELK IOC field → Open in HELK</li><li>OS: <code>fp-ti-*</code> + <code>helk-detections</code></li><li>Cortex via TheHive → analyze hash/IP</li></ol><h4>4. HELK hunting · 5. VR DFIR · 6. TS timeline</h4><p>See dedicated HELK Hunting, Velociraptor DFIR and Timesketch sections in this documentation. Validation: <code>python3 scripts/helk_full_config_verify.py</code>, <code>velociraptor_full_config_verify.py</code>.</p><h4>Tool matrix by scenario</h4><table class=\"portal-doc-table portal-doc-table-compact\"><thead><tr><th>Scenario</th><th>CERT</th><th>HELK</th><th>VR</th><th>OS</th><th>TS</th><th>CTI</th></tr></thead><tbody><tr><td>Incident 360°</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr><tr><td>Endpoint 360°</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr><tr><td>Threat 360°</td><td>✓</td><td>✓</td><td>—</td><td>✓</td><td>—</td><td>✓</td></tr><tr><td>TS timeline</td><td>✓</td><td>✓</td><td>✓</td><td>—</td><td>✓</td><td>—</td></tr></tbody></table><h4>Interactive guided tutorial</h4><p>The button below starts a tour of key tabs (Overview → Documentation → HELK → Velociraptor → SOC Assistant). Also enable <strong>Guided path</strong> at the bottom of the documentation page.</p><button type=\"button\" class=\"fp-btn fp-btn-primary fp-btn-sm\" id=\"portal-doc-start-tour\">Start guided tutorial</button></div>"
     },
     "changelog": {
       "title": "Changelog"
     },
     "tiles": {
-      "inventory": "Premium++ catalog: paths, playbooks, parsers, workers, CTI, interconnections.",
+      "inventory": "FP-Master catalog: paths, playbooks, parsers, workers, CTI, interconnections.",
       "arch": "Full Docker, Nginx, services and data flow diagram.",
       "platform": "Scope, HTTPS URLs, forensic.sh startup.",
       "ingest": "Upload, worker, OpenSearch, Timesketch, Logstash.",
       "cti": "OpenCTI, MISP, TheHive, Cortex.",
-      "sekoia": "Intakes, rules, targeted collection.",
-      "s1": "Agents, policies, Deep Visibility.",
+      "helk": "Sysmon hunting, Sigma, MITRE.",
+      "velociraptor": "DFIR collection, offline playbooks.",
+      "opensearch": "SIEM, Dashboards, indices.",
       "cert": "Investigation, timeline, IOC.",
       "ai": "Query help — analyst validation."
     }

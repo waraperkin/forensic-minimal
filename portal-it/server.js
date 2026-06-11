@@ -17,9 +17,11 @@ const winston    = require('winston');
 const rateLimit  = require('express-rate-limit');
 const cors       = require('cors');
 const { enqueueIngestJob } = require('./lib/ingest-queue');
+const { pushToHelk } = require('./lib/helk-connector');
 const { MAX_FILES, MAX_SIZE_BYTES, getUploadConfig } = require('./lib/upload-limits');
 const { createMasterIntakesRoutes } = require('./routes/master-intakes');
 const { createMasterIngestErrorsRoutes } = require('./routes/master-ingest-errors');
+const { createUiErrorRouter } = require('./lib/ui-error-log');
 
 const logger = winston.createLogger({
   level: 'info',
@@ -155,6 +157,146 @@ async function validateToken(req, res, next) {
 app.get('/api/health', (req, res) =>
   res.json({ status: 'ok', portal: 'it', redis: redis.isReady, ts: new Date().toISOString() }));
 
+app.get('/api/it/health', (req, res) =>
+  res.json({ status: 'ok', portal: 'it', redis: redis.isReady, ts: new Date().toISOString() }));
+
+app.get('/api/helk/status', async (_req, res) => {
+  const { helkHealth } = require('./lib/helk-connector');
+  res.json({ helk: await helkHealth() });
+});
+
+app.post('/api/endpoint', async (req, res) => {
+  const body = req.body || {};
+  const doc = {
+    '@timestamp': new Date().toISOString(),
+    ...body,
+    source: 'velociraptor',
+    tags: ['velociraptor', 'it-endpoint'],
+  };
+  try {
+    await osClient.index({ index: 'velociraptor-endpoints', body: doc }).catch(() => {});
+    res.json({ ok: true, endpoint: body.hostname || 'unknown' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/endpoints/velociraptor', async (_req, res) => {
+  try {
+    const r = await osClient.search({
+      index: 'velociraptor-endpoints*',
+      body: { size: 200, sort: [{ '@timestamp': { order: 'desc' } }] },
+    });
+    res.json(r.body.hits.hits.map((h) => ({ id: h._id, ...h._source })));
+  } catch (e) {
+    res.json([]);
+  }
+});
+
+app.get('/api/velociraptor/status', async (_req, res) => {
+  const { velociraptorHealth } = require('./lib/velociraptor-connector');
+  res.json({ velociraptor: await velociraptorHealth() });
+});
+
+const CERT_URL = () => process.env.CERT_PORTAL_URL || 'http://cert-portal:3000';
+
+app.get('/api/helk/hunt-url', async (req, res) => {
+  try {
+    const { data } = await axios.get(`${CERT_URL()}/api/helk/hunt-url`, { params: req.query, timeout: 10000 });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.get('/api/velociraptor/clients', async (_req, res) => {
+  try {
+    const { data } = await axios.get(`${CERT_URL()}/api/velociraptor/clients`, { timeout: 30000 });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ ok: false, clients: [], error: e.message });
+  }
+});
+
+app.post('/api/velociraptor/collect', async (req, res) => {
+  try {
+    const { data } = await axios.post(`${CERT_URL()}/api/velociraptor/collect`, req.body || {}, { timeout: 300000 });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/velociraptor/lab/artifacts', async (_req, res) => {
+  try {
+    const { data } = await axios.get(`${CERT_URL()}/api/velociraptor/lab/artifacts`, { timeout: 30000 });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/velociraptor/lab/collect-full', async (req, res) => {
+  try {
+    const { data } = await axios.post(`${CERT_URL()}/api/velociraptor/lab/collect-full`, req.body || {}, { timeout: 300000 });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/endpoints/velociraptor-artifacts', async (req, res) => {
+  const hostname = String(req.query.hostname || '').trim();
+  if (!hostname) return res.status(400).json({ ok: false, error: 'hostname requis' });
+  try {
+    const r = await osClient.search({
+      index: 'velociraptor-*',
+      body: {
+        size: 0,
+        query: {
+          bool: {
+            should: [
+              { term: { 'host.keyword': hostname } },
+              { term: { 'hostname.keyword': hostname } },
+              { match_phrase: { host: hostname } },
+            ],
+          },
+        },
+        aggs: {
+          artifacts: { terms: { field: 'artifact.keyword', size: 50 } },
+        },
+      },
+    });
+    const buckets = r.body.aggregations?.artifacts?.buckets || [];
+    res.json({
+      ok: true,
+      hostname,
+      artifacts: buckets.map((b) => b.key),
+      discover: `/dashboards/app/discover#/?q=_index:velociraptor-* AND host:"${hostname}"`,
+    });
+  } catch (e) {
+    res.json({ ok: true, hostname, artifacts: [], error: e.message });
+  }
+});
+
+app.post('/api/helk/sync', async (_req, res) => {
+  try {
+    const { data } = await axios.post(`${CERT_URL()}/api/helk/sync`, {}, { timeout: 120000 });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/helk/lab/ingest', async (_req, res) => {
+  try {
+    const { data } = await axios.post(`${CERT_URL()}/api/helk/lab/ingest`, {}, { timeout: 180000 });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/config', (_req, res) => {
   res.json({ ...getUploadConfig(), portal: 'it' });
 });
@@ -177,6 +319,18 @@ app.get('/api/platform-health', async (_req, res) => {
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: 'Platform health unavailable', detail: e.message });
+  }
+});
+
+app.use('/api', createUiErrorRouter({ os: osClient, logger, defaultPortal: 'it' }));
+
+app.get('/api/health/global', async (_req, res) => {
+  const certUrl = process.env.CERT_PORTAL_URL || 'http://cert-portal:3000';
+  try {
+    const { data } = await axios.get(`${certUrl}/api/health/global`, { timeout: 15000 });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'Global health unavailable', detail: e.message });
   }
 });
 
@@ -288,6 +442,7 @@ app.post('/api/upload',
     const analyst = (req.body && req.body.submitter_name)  || 'it-team';
     const contact = (req.body && req.body.submitter_email) || '';
     const notes   = (req.body && req.body.notes)           || '';
+    const syncHelk = ['1', 'true', 'on', 'yes'].includes(String(req.body.helk_sync || req.body.helk_send || '').toLowerCase());
 
     logger.info(`IT upload: ${(req.files||[]).length} fichiers, case=${caseId}, analyst=${analyst}`);
 
@@ -333,7 +488,7 @@ app.post('/api/upload',
           size: file.size,
         });
 
-        results.push({
+        const row = {
           ok: true,
           file: file.originalname,
           uploadId,
@@ -342,7 +497,20 @@ app.post('/api/upload',
           ingest_note: queued
             ? 'Parsing en cours (OpenSearch + Timesketch)'
             : 'Worker indisponible — fichier stocké dans MinIO',
-        });
+        };
+        if (syncHelk) {
+          row.helk = await pushToHelk({
+            buffer: file.buffer,
+            filename: file.originalname,
+            caseId,
+            analyst,
+            osType,
+            portal: 'it',
+            uploadId,
+            tags: ['it-upload'],
+          });
+        }
+        results.push(row);
         logger.info(`IT upload OK: ${file.originalname} → s3://${bucket}/${key}`);
       } catch (e) {
         logger.error(`IT upload FAIL ${file.originalname}:`, e.message);

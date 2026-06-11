@@ -94,41 +94,6 @@ function createOverviewRouter({ os, getServicesCheck, CFG }) {
     }
   });
 
-  router.get('/vigil/e2e', async (req, res) => {
-    try {
-      const axios = require('axios');
-      const vigilUrl = (process.env.VIGIL_CONNECTOR_URL || 'http://forensic-vigil-connector:8083').replace(/\/$/, '');
-      const r = await axios.get(`${vigilUrl}/e2e/incident`, { timeout: 10000, validateStatus: () => true });
-      res.status(r.status).json(r.data);
-    } catch (e) {
-      res.json({ ok: false, error: e.message });
-    }
-  });
-
-  router.get('/vigil', async (req, res) => {
-    try {
-      const vigilUrl = (process.env.VIGIL_CONNECTOR_URL || 'http://forensic-vigil-connector:8083').replace(/\/$/, '');
-      const axios = require('axios');
-      const [health, alerts, ioc, assets] = await Promise.all([
-        axios.get(`${vigilUrl}/health`, { timeout: 8000, validateStatus: () => true }).catch(() => ({ data: {} })),
-        axios.get(`${vigilUrl}/alerts`, { timeout: 12000, validateStatus: () => true }).catch(() => ({ data: { count: 0 } })),
-        axios.get(`${vigilUrl}/ioc`, { timeout: 12000, validateStatus: () => true }).catch(() => ({ data: { count: 0 } })),
-        axios.get(`${vigilUrl}/assets`, { timeout: 12000, validateStatus: () => true }).catch(() => ({ data: { count: 0 } })),
-      ]);
-      res.json({
-        status: health.data?.status || 'unknown',
-        mode: health.data?.vigil?.mode || 'demo',
-        alerts: alerts.data?.count ?? (alerts.data?.items || []).length,
-        ioc: ioc.data?.count ?? (ioc.data?.items || []).length,
-        assets: assets.data?.count ?? (assets.data?.items || []).length,
-        latency_ms: health.data?.latency_ms,
-        opensearch: health.data?.opensearch?.status,
-      });
-    } catch (e) {
-      res.json({ status: 'down', alerts: 0, ioc: 0, assets: 0, error: e.message });
-    }
-  });
-
   router.get('/summary', async (req, res) => {
     try {
       const health = await getServicesCheck();

@@ -1,4 +1,4 @@
-/* global ForensicAPI, PortalMasterZones */
+/* global PortalMasterZones */
 'use strict';
 
 (function () {
@@ -15,14 +15,11 @@
     el.innerHTML = `<p class="fp-muted">${i18n.t('ui.loading')}</p>`;
     try {
       const { esc, apiGet, renderPage, tableFromRows, hintMsg, getSection, sliceToSection } = C();
-      const [dash, incidents, uploads, vigilAlerts] = await Promise.all([
+      const [dash, incidents, uploads] = await Promise.all([
         apiGet('/api/master/dashboard/cert'),
         apiGet('/api/master/incidents'),
         apiGet('/api/uploads'),
-        fetch('/api/vigil/alerts', { credentials: 'include' }).then((r) => r.json()).catch(() => ({ items: [] })),
       ]);
-      const vigStatus = (inc) => (window.VigilIntegration
-        ? VigilIntegration.computeIncidentVigilStatus(inc, vigilAlerts) : '—');
       const incList = Array.isArray(incidents) ? incidents : [];
       const active = incList.filter(isActiveIncident);
       const upList = Array.isArray(uploads) ? uploads : [];
@@ -39,11 +36,9 @@
           title: r.title,
           severity: r.severity,
           status: r.status,
-          vigil_status: vigStatus(r),
         })),
-        [{ key: 'id', label: 'ID' }, { key: 'title', label: 'Titre' }, { key: 'severity', label: i18n.t('table.severity') }, { key: 'status', label: 'Statut' }, { key: 'vigil_status', label: i18n.t('vigil.col_status') }],
-      ) + hintMsg(i18n.t('msg.ouvrez_details_sur_une_ligne_du_menu_incidents_p'))
-        + (window.VigilIntegration ? await VigilIntegration.buildCertOpsVigilHtml(vigilAlerts) : '');
+        [{ key: 'id', label: 'ID' }, { key: 'title', label: 'Titre' }, { key: 'severity', label: i18n.t('table.severity') }, { key: 'status', label: 'Statut' }],
+      ) + hintMsg(i18n.t('msg.ouvrez_details_sur_une_ligne_du_menu_incidents_p'));
 
       const s3 = tableFromRows(
         upList.slice(0, 25).map((u) => ({
@@ -74,11 +69,10 @@
         { id: 'section-4', title: 'Demandes IT vers CERT', html: s4, exportTable: { rows: itReq.map((u) => ({ file: u.file?.name, email: u.submitter_email, case_id: u.case_id })), cols: [{ key: 'file', label: 'Fichier' }, { key: 'email', label: 'IT' }, { key: 'case_id', label: 'Case' }] } },
       ];
 
-      const page = renderPage(PANEL, null, null, sections, {
+      renderPage(PANEL, null, null, sections, {
         summary: { dashboard: dash, activeIncidents: active.length, uploads: upList.length, itRequests: itReq.length },
         scrollTo: getSection() || sliceToSection(PANEL, slice),
       });
-      if (window.VigilIntegration) VigilIntegration.bindVigilActions(page || el);
     } catch (e) {
       el.innerHTML = `<p class="fp-alert fp-alert-err">${C().esc(e.message)}</p>`;
     }

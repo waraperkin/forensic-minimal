@@ -9,7 +9,7 @@
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  const VERSION = '2026.06.06-doc1';
+  const VERSION = '2026.06.11-minimal-doc1';
 
   /** @type {{ group: string, items: { id: string, type?: 'inline'|'fetch'|'changelog', fetch?: string }[] }[]} */
   const DOC_CATALOG = [
@@ -28,9 +28,9 @@
     {
       group: 'docs.groups.tools',
       items: [
-        { id: 'sekoia', type: 'inline' },
-        { id: 'sentinelone', type: 'inline' },
-        { id: 'governance', type: 'inline' },
+        { id: 'helk', type: 'inline' },
+        { id: 'velociraptor', type: 'inline' },
+        { id: 'opensearch', type: 'inline' },
         { id: 'certtools', type: 'inline' },
         { id: 'timesketch', type: 'inline' },
         { id: 'intelligence', type: 'inline' },
@@ -87,19 +87,14 @@
 
   function helpMap() {
     return {
-      'sekoia-assets': i18n.t('msg.inventaire_sources_assets_sekoia_renommage_intak'),
-      'sekoia-rules': i18n.t('msg.regles_sigma_recherche_filtres_export_virtual_sc'),
-      'sekoia-fetch': i18n.t('msg.collecte_ciblee_filtre_hostname_ip_obligatoire'),
-      's1-endpoints': 'Agents & groupes SentinelOne.',
+      'helk-hunting': i18n.t('docs.helk.help'),
+      'velociraptor-dfir': i18n.t('docs.velociraptor.help'),
       'audit-center': i18n.t('msg.journal_des_modifications_plateforme_synthese_au'),
-      'sekoia-cc': i18n.t('msg.control_center_sekoia_inventaire_stats_builders_'),
-      'gov-views': i18n.t('msg.vues_custom_persistees_json'),
       'cert-timeline-builder': i18n.t('msg.timeline_chronologique_export_timesketch'),
       'soc-investigation-assisted': i18n.t('msg.pivots_et_synthese_multi_plateformes_valider_ava'),
       'soc-autonomous': i18n.t('msg.analyse_soc_synthese_incidents_anomalies_correla'),
       'portal-documentation': i18n.t('msg.documentation_formation_integrees'),
       'fp-btn-primary': i18n.t('msg.action_principale_peut_declencher_une_ecriture_a'),
-      'cc-tp-filterbar': i18n.t('msg.filtres_debounces_120ms_export_csv_json'),
     };
   }
 
@@ -107,10 +102,36 @@
     return [
       { sel: '[data-tab-btn="overview"]', text: i18n.t('doc.tour_overview') },
       { sel: '[data-tab-btn="portal-documentation"]', text: i18n.t('doc.tour_docs') },
-      { sel: '[data-tab-btn="sekoia-rules"]', text: i18n.t('doc.tour_rules') },
+      { sel: '[data-tab-btn="helk-hunting"]', text: i18n.t('doc.tour_helk') },
+      { sel: '[data-tab-btn="velociraptor-dfir"]', text: i18n.t('doc.tour_velociraptor') },
       { sel: '#portal-ai-toggle', text: i18n.t('doc.tour_ai') },
-      { sel: '[data-tab-btn="audit-center"]', text: i18n.t('doc.tour_audit') },
     ];
+  }
+
+  let mermaidLoading = null;
+  function initMermaidIn(host) {
+    const nodes = host.querySelectorAll('.mermaid');
+    if (!nodes.length) return;
+    const run = () => {
+      if (!window.mermaid) return;
+      window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+      window.mermaid.run({ nodes }).catch(() => {});
+    };
+    if (window.mermaid) {
+      run();
+      return;
+    }
+    if (!mermaidLoading) {
+      mermaidLoading = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('mermaid load failed'));
+        document.head.appendChild(s);
+      });
+    }
+    mermaidLoading.then(run).catch(() => {});
   }
 
   let tooltipEl = null;
@@ -218,11 +239,13 @@
       }
       if (item.type === 'fetch' && item.fetch) {
         host.innerHTML = await fetchDocHtml(item.fetch);
+        initMermaidIn(host);
         host.querySelector('#portal-doc-start-tour')?.addEventListener('click', startTour);
         return;
       }
       const s = docSection(section);
       host.innerHTML = s.body;
+      initMermaidIn(host);
       host.querySelector('#portal-doc-start-tour')?.addEventListener('click', startTour);
     } catch (e) {
       host.innerHTML = `<p class="fp-alert fp-alert-err">${esc(e.message)}</p>`;

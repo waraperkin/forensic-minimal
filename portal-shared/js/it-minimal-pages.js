@@ -13,26 +13,17 @@ const ItMinimalPages = (() => {
   async function renderHealth() {
     const root = document.getElementById('it-health-root');
     if (!root) return;
-    try {
-      const [local, platform] = await Promise.all([
-        api.get('api/health'),
-        api.get('api/platform-health').catch(() => null),
-      ]);
-      const rows = [
-        { name: 'Portail IT', ok: local?.status === 'ok' },
-        { name: 'Redis', ok: !!local?.redis },
-      ];
-      if (platform?.services) {
-        platform.services.forEach((s) => rows.push({ name: s.name, ok: !!s.ok }));
-      }
-      root.innerHTML = `<div class="fp-ds-scroll-list">${rows.map((r) => `
-        <div class="fp-ds-list-row">
-          <span>${ForensicUtils.escapeHtml(r.name)}</span>
-          ${statusBadge(r.ok)}
-        </div>`).join('')}</div>`;
-    } catch (_) {
-      root.innerHTML = '<p class="fp-muted">Erreur de chargement</p>';
+    if (window.GlobalHealthDashboard) {
+      GlobalHealthDashboard.mount(root, { compact: false });
+      return;
     }
+    root.innerHTML = '<p class="fp-muted">Erreur de chargement</p>';
+  }
+
+  function renderOverviewHealth() {
+    const root = document.getElementById('gh-it-overview');
+    if (!root || !window.GlobalHealthDashboard) return;
+    GlobalHealthDashboard.mount(root, { compact: true });
   }
 
   async function renderAgents() {
@@ -67,7 +58,6 @@ const ItMinimalPages = (() => {
         <li><a href="/dashboards/" target="_blank" rel="noopener">OpenSearch Dashboards</a></li>
         <li><a href="/timesketch/" target="_blank" rel="noopener">Timesketch</a></li>
         <li><a href="/cti/" target="_blank" rel="noopener">OpenCTI</a></li>
-        <li><a href="/vigilsoc/" target="_blank" rel="noopener">VigilSOC</a></li>
       </ul>
       <p class="fp-ds-muted" style="margin-top:1rem">${i18n.t('it.doc_hint')}</p>`;
   }
@@ -89,13 +79,15 @@ const ItMinimalPages = (() => {
   }
 
   function init() {
+    if (window.GlobalHealthService) GlobalHealthService.startPolling();
+    renderOverviewHealth();
     renderHealth();
     renderAgents();
     renderDocumentation();
     renderAdmin();
   }
 
-  return { init, renderHealth, renderAgents };
+  return { init, renderHealth, renderOverviewHealth, renderAgents };
 })();
 
 window.ItMinimalPages = ItMinimalPages;

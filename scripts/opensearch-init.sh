@@ -109,8 +109,7 @@ fi
 # ── 4. Indices initiaux + aliases write ─────────────────────────
 for idx in forensic-uploads forensic-tokens forensic-windows forensic-linux \
            forensic-macos forensic-web forensic-network forensic-cloud \
-           forensic-k8s forensic-db forensic-endpoint forensic-firewall forensic-alerts \
-           vigil-alerts vigil-ioc vigil-assets; do
+           forensic-k8s forensic-db forensic-endpoint forensic-firewall forensic-alerts; do
   # Crée -000001 avec alias write si absent
   exists=$(curl -s -o /dev/null -w '%{http_code}' "$OS/${idx}-000001")
   if [ "$exists" = "404" ]; then

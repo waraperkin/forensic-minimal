@@ -19,6 +19,8 @@
 <link rel="stylesheet" href="shared/css/portal-design-system.css">
 <link rel="stylesheet" href="css/cert-shell.css">
 <link rel="stylesheet" href="shared/css/portal-cybercorp-stable.css">
+<link rel="stylesheet" href="shared/css/global-health.css">
+<link rel="stylesheet" href="shared/css/global-error.css">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js" defer></script>
 </head>
 <body class="app-shell portal-v6 portal-cybercorp-stable">
@@ -41,7 +43,6 @@
     <a href="/cortex/" target="_blank" rel="noopener">🧬 <span data-i18n="header.nav_cortex"></span></a>
     <a href="/minio/" target="_blank" rel="noopener">📦 <span data-i18n="header.nav_minio"></span></a>
     <a href="/grafana/" target="_blank" rel="noopener">📈 <span data-i18n="header.nav_grafana"></span></a>
-    <a href="/vigilsoc/" target="_blank" rel="noopener" data-vigilsoc-nav>🛡 <span data-i18n="vigil.ui_nav"></span></a>
   </nav>
   <div class="fp-header-actions">
     <span id="cc-soc-clock" class="cc-soc-clock" aria-live="polite"></span>
@@ -62,6 +63,8 @@
           <li><button type="button" class="cc-nav-btn" data-tab-btn="access-center" data-cc-icon="tools"><span data-i18n="sidebar.access_center"></span></button></li>
           <li><button type="button" class="cc-nav-btn" data-tab-btn="threat-intel" data-cc-icon="ti"><span data-i18n="sidebar.threat_intel"></span></button></li>
           <li><button type="button" class="cc-nav-btn" data-tab-btn="ingest-evidence" data-cc-icon="ingest"><span data-i18n="sidebar.ingest_evidence"></span></button></li>
+          <li><button type="button" class="cc-nav-btn" data-tab-btn="helk-hunting" data-cc-icon="tools"><span data-i18n="sidebar.helk_hunting"></span></button></li>
+          <li><button type="button" class="cc-nav-btn" data-tab-btn="velociraptor-dfir" data-cc-icon="tools"><span data-i18n="sidebar.velociraptor_dfir"></span></button></li>
         </ul>
       </div>
       <div class="cc-nav-section">
@@ -133,6 +136,7 @@
             <p class="fp-ds-page-lead fp-ds-muted" data-i18n="cert_index.overview_lead"></p>
           </header>
           <div id="ov-soc-tools-top" class="fp-ds-section"></div>
+          <div id="gh-overview-strip" class="fp-ds-section fp-section-spaced"></div>
           <div id="ov-cert-root" class="fp-ds-section"><p class="fp-muted" data-i18n="ui.loading"></p></div>
         </div>
       </div>
@@ -169,6 +173,20 @@
         <h2 class="fp-section-title" data-i18n="cert_index.ingest_title"></h2>
         <p class="fp-muted" data-i18n="cert_index.ingest_lead"></p>
         <div id="ingest-evidence-root"></div>
+      </div>
+    </section>
+    <section id="tab-helk-hunting" class="fp-panel">
+      <div class="fp-card fp-card-premium cc-glass-panel">
+        <h2 class="fp-section-title" data-i18n="helk.module_title"></h2>
+        <p class="fp-muted" data-i18n="helk.module_lead"></p>
+        <div id="helk-hunting-root"><p class="fp-muted" data-i18n="ui.loading"></p></div>
+      </div>
+    </section>
+    <section id="tab-velociraptor-dfir" class="fp-panel">
+      <div class="fp-card fp-card-premium cc-glass-panel">
+        <h2 class="fp-section-title" data-i18n="velociraptor.module_title"></h2>
+        <p class="fp-muted" data-i18n="velociraptor.module_lead"></p>
+        <div id="velociraptor-dfir-root"><p class="fp-muted" data-i18n="ui.loading"></p></div>
       </div>
     </section>
     <section id="tab-cert-ops" class="fp-panel">
@@ -282,6 +300,12 @@
               <option value="network" data-i18n="upload.os_network"></option>
             </select>
           </label>
+          <label class="fp-label fp-label-checkbox">
+            <input type="checkbox" id="helk-send" checked>
+            <span data-i18n="helk.send_to_helk"></span>
+          </label>
+          <p class="fp-hint"><span id="helk-status-badge" class="cc-badge cc-badge-muted" data-i18n="helk.status_loading"></span></p>
+          <p class="fp-hint"><span id="vr-status-badge" class="cc-badge cc-badge-muted" data-i18n="velociraptor.status_loading"></span></p>
           <div class="fp-actions-row">
             <button type="button" class="fp-btn fp-btn-primary" id="ubtn" disabled onclick="doUpload()" data-analyst-hide-write>⬆ UPLOAD</button>
           </div>
@@ -430,7 +454,6 @@
             <a class="fp-svc-row" href="/cortex/" target="_blank" rel="noopener"><span class="fp-dot loading" id="d-cx"></span>Cortex</a>
             <a class="fp-svc-row" href="/minio/" target="_blank" rel="noopener"><span class="fp-dot loading" id="d-minio"></span>MinIO</a>
             <a class="fp-svc-row" href="/it/" target="_blank" rel="noopener"><span class="fp-dot loading" id="d-it"></span><span data-i18n="health.portal_it"></span></a>
-            <a class="fp-svc-row" href="/vigilsoc/" target="_blank" rel="noopener"><span class="fp-dot loading" id="d-vigilsoc"></span><span data-i18n="vigil.ui_nav"></span></a>
           </div>
           <div class="fp-table-wrap fp-table-spaced">
             <table class="fp-table"><thead><tr><th data-i18n="table_cols.service"></th><th data-i18n="table_cols.status"></th><th data-i18n="table_cols.detail"></th></tr></thead>
@@ -635,11 +658,14 @@
 <script src="shared/js/sekoia-heatmap.js"></script>
 <script src="shared/js/sekoia-correlation.js"></script>
 <script src="shared/js/portal-alerting.js"></script>
-<script src="shared/js/vigil-integration.js"></script>
 <script src="shared/js/cybercorp-hub.js"></script>
 <script src="shared/js/cybercorp-shell.js"></script>
 <script src="shared/js/cert-activity-log.js"></script>
 <script src="shared/js/forensic-utils.js"></script>
+<script src="shared/js/api-client.js"></script>
+<script src="shared/js/ui-error-logger.js"></script>
+<script src="shared/js/global-error-boundary.js"></script>
+<script src="shared/js/proxy-frame.js"></script>
 <script src="shared/js/forensic-api.js"></script>
 <script src="shared/js/forensic-ui.js"></script>
 <script src="shared/js/forensic-validation.js"></script>
@@ -647,7 +673,12 @@
 <script src="shared/js/portal-master-zones.js"></script>
 <script src="shared/js/cert-session.js"></script>
 <script src="shared/js/soc-tools.js"></script>
+<script src="shared/js/soc-pivot-links.js"></script>
+<script src="shared/js/helk-integration.js"></script>
+<script src="shared/js/velociraptor-integration.js"></script>
 <script src="shared/js/access-center.js"></script>
+<script src="shared/js/global-health-service.js"></script>
+<script src="shared/js/global-health-dashboard.js"></script>
 <script src="shared/js/cert-overview.js"></script>
 <script src="shared/js/cert-users.js"></script>
 <script src="shared/js/cert-settings.js"></script>

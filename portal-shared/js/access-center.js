@@ -14,7 +14,6 @@ function acEsc(s) {
 
 function acSocTools() {
   return [
-    { name: 'VigilSOC', path: '/vigilsoc/', desc: 'Console VigilSOC' },
     { name: 'OpenSearch Dashboards', path: '/dashboards/' },
     { name: 'Timesketch', path: '/timesketch/' },
     { name: 'OpenCTI', path: '/cti/' },
@@ -29,13 +28,6 @@ function acSocTools() {
 }
 
 const AC_ENDPOINTS = [
-  { method: 'GET', path: '/api/vigil/health', descKey: 'vigil.tools_health' },
-  { method: 'GET', path: '/api/vigil/alerts', descKey: 'vigil.tools_alerts' },
-  { method: 'GET', path: '/api/vigil/ioc', descKey: 'vigil.tools_ioc' },
-  { method: 'GET', path: '/api/vigil/assets', descKey: 'vigil.tools_assets' },
-  { method: 'POST', path: '/api/vigil/alerts/:id/timesketch', descKey: 'vigil.tools_timesketch' },
-  { method: 'GET', path: '/api/vigil/e2e/incident', descKey: 'vigil.tools_e2e' },
-  { method: 'POST', path: '/api/vigil/e2e/incident', descKey: 'vigil.tools_e2e' },
   { method: 'GET', path: '/api/master', descKey: 'msg.zones_master_incidents_cases_kb_assets' },
   { method: 'GET', path: '/api/overview', descKey: 'msg.synthese_plateforme_summary_health_ingest_ti' },
   { method: 'POST', path: '/api/upload', descKey: 'msg.upload_de_preuves_forensic_token_requis' },

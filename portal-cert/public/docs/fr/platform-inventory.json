@@ -1,20 +1,18 @@
 {
-  "version": "2026.06.06-premium++",
+  "version": "2026.06.11-minimal",
   "interconnections": [
     {"from": "Portail CERT/IT", "to": "MinIO + Redis", "via": "POST /api/upload", "desc": "Dépôt preuves → queue ingest"},
     {"from": "ingest-worker", "to": "OpenSearch", "via": "bulk API", "desc": "Index forensic-* / fp-*"},
     {"from": "ingest-worker", "to": "Timesketch", "via": "timesketch_io.py", "desc": "Import CSV 9 colonnes"},
-    {"from": "Logstash/Filebeat", "to": "OpenSearch", "via": "pipelines ECS", "desc": "Flux réseau & logs conteneurs"},
-    {"from": "OpenCTI", "to": "OpenSearch", "via": "connecteurs + ti_enrichment", "desc": "Indices fp-ti-opencti-*"},
+    {"from": "cert-portal", "to": "helk-bridge", "via": "/api/helk/*", "desc": "Ingest lab, sync, export TS/CTI"},
+    {"from": "helk-bridge", "to": "OpenSearch FP", "via": "POST /sync", "desc": "helk-findings, helk-detections"},
+    {"from": "cert-portal", "to": "velociraptor-bridge", "via": "/api/velociraptor/*", "desc": "Collecte & export DFIR"},
+    {"from": "velociraptor-bridge", "to": "OpenSearch FP", "via": "export_to_opensearch", "desc": "Index velociraptor-*"},
+    {"from": "helk-bridge", "to": "Timesketch", "via": "/export/timesketch", "desc": "Timeline hunting"},
+    {"from": "OpenCTI", "to": "OpenSearch", "via": "ti_enrichment", "desc": "Indices fp-ti-opencti-*"},
     {"from": "MISP", "to": "OpenSearch", "via": "opensearch_ioc_misp_sync.py", "desc": "Indices fp-ti-misp-*"},
-    {"from": "OpenCTI", "to": "MISP", "via": "connecteurs export/import", "desc": "Sync IOC bidirectionnelle"},
-    {"from": "TheHive", "to": "Cortex", "via": "observables → analyseurs", "desc": "Enrichissement cas"},
-    {"from": "cert-portal", "to": "Sekoia CP", "via": "/api/threat/sekoia/*", "desc": "Proxy :8081"},
-    {"from": "cert-portal", "to": "SentinelOne CP", "via": "/api/threat/s1/*", "desc": "Proxy :8082"},
-    {"from": "Sekoia fetch", "to": "Timesketch", "via": "export threat API", "desc": "Timeline investigation"},
-    {"from": "Grafana", "to": "Prometheus/Loki/OS", "via": "datasources", "desc": "Métriques & logs SOC"},
-    {"from": "OSD Playbooks", "to": "OpenSearch", "via": "saved searches", "desc": "77+ recherches Analyst PB"},
-    {"from": "SOC Autonomous", "to": "OpenSearch + portail", "via": "soc_autonomous_master.py", "desc": "Synthèse incidents/anomalies"}
+    {"from": "TheHive", "to": "Cortex", "via": "observables", "desc": "Analyseurs IR"},
+    {"from": "Grafana", "to": "Prometheus/Loki/OS", "via": "datasources", "desc": "Métriques & dashboards SOC"}
   ],
   "filters": [
     {"id": "all", "label": "Tout"},
@@ -154,15 +152,14 @@
       "id": "sigma-rules",
       "filter": ["all", "detection"],
       "name": "Règles Sigma & détection OS",
-      "summary": "700+ règles SIEM + génération + sync Sekoia (portail + API).",
-      "usage": "OSD fp-mitre-dashboard. Portail : Sekoia Rules. scripts/opensearch_generate_detection_rules.py en full-start.",
-      "connects": ["OpenSearch", "Sekoia.IO"],
+      "summary": "Règles Sigma HELK + détections sync OpenSearch FP.",
+      "usage": "Panneau HELK → MITRE/Sigma Grafana. Pipeline 0080-sigma-detections.conf. scripts/helk_full_config_verify.py",
+      "connects": ["HELK", "OpenSearch"],
       "files": [
-        {"path": "scripts/sigma_master_setup.py", "role": "Activation règles Sigma"},
-        {"path": "scripts/opensearch_generate_detection_rules.py", "role": "Génération masse 700+"},
-        {"path": "scripts/opensearch_siem_rules_mass.py", "role": "Import règles SIEM"},
-        {"path": "scripts/detection_intel_master_lib.py", "role": "Lib détection intel"},
-        {"path": "portal-shared/js/threat-platforms.js", "role": "UI règles Sekoia/S1"},
+        {"path": "helk/scripts/sigma_runner.py", "role": "Runner Sigma HELK"},
+        {"path": "helk/config/logstash/pipeline/0080-sigma-detections.conf", "role": "Pipeline détections"},
+        {"path": "scripts/sigma_master_setup.py", "role": "Activation règles OS"},
+        {"path": "portal-shared/js/helk-integration.js", "role": "UI hunting portail"},
         {"path": "config/timesketch/sigma_config.yaml", "role": "Config Sigma Timesketch"}
       ]
     },
@@ -218,20 +215,35 @@
       ]
     },
     {
-      "id": "sekoia-s1-cp",
+      "id": "helk-sidecar",
       "filter": ["all", "detection", "portal"],
-      "name": "Control Planes Sekoia & SentinelOne",
-      "summary": "API proxy pour inventaires, fetch, règles, agents, threats.",
-      "usage": "Configurer secrets dans tp-config. JWT Sekoia ~15min. Menus Plateformes menace + Sekoia CC.",
-      "connects": ["cert-portal /api/threat/*"],
+      "name": "HELK Hunting (sidecar)",
+      "summary": "Bridge helk, pipelines Logstash, Kibana, dashboards Grafana, ingest lab offline.",
+      "usage": "Onglet HELK Hunting. POST /api/helk/lab/ingest, sync, export Timesketch/CTI.",
+      "connects": ["cert-portal", "OpenSearch", "Timesketch", "Grafana"],
       "files": [
-        {"path": "portal-shared/js/threat-platforms.js", "role": "UI Sekoia/S1 panels"},
-        {"path": "portal-shared/js/sekoia-control-center.js", "role": "Sekoia Control Center"},
-        {"path": "portal-shared/js/sekoia-enterprise.js", "role": "Enterprise Sekoia"},
-        {"path": "portal-cert/lib/threat-v2-proxy.js", "role": "Proxy Node → CP"},
-        {"path": "portal-cert/lib/threat-platforms-routes.js", "role": "Routes API threat"},
-        {"path": "cybercorp-sekoia-controlplane/", "role": "Service Docker :8081"},
-        {"path": "cybercorp-sentinelone-controlplane/", "role": "Service Docker :8082"}
+        {"path": "helk/scripts/helk_bridge.py", "role": "Bridge HTTP"},
+        {"path": "helk/scripts/lab_ingest.py", "role": "Ingest lab offline"},
+        {"path": "portal-cert/routes/helk-routes.js", "role": "Routes portail"},
+        {"path": "portal-shared/js/helk-integration.js", "role": "UI panneau HELK"},
+        {"path": "dashboards/grafana/helk/", "role": "Dashboards Grafana"},
+        {"path": "scripts/helk_full_config_verify.py", "role": "Vérification config"}
+      ]
+    },
+    {
+      "id": "velociraptor-sidecar",
+      "filter": ["all", "detection", "portal"],
+      "name": "Velociraptor DFIR (sidecar)",
+      "summary": "Bridge collecte/export, artefacts ForensicFull, playbooks offline.",
+      "usage": "Onglet Velociraptor DFIR. Collecte offline ou live. GUI /velociraptor/",
+      "connects": ["cert-portal", "OpenSearch", "MinIO", "Timesketch"],
+      "files": [
+        {"path": "velociraptor/export/vraptor_bridge.py", "role": "Bridge HTTP"},
+        {"path": "velociraptor/export/lab_simulator.py", "role": "Simulateur lab"},
+        {"path": "portal-cert/routes/velociraptor-routes.js", "role": "Routes portail"},
+        {"path": "portal-shared/js/velociraptor-integration.js", "role": "UI panneau VR"},
+        {"path": "velociraptor/artifacts/custom/", "role": "Artefacts YAML"},
+        {"path": "scripts/velociraptor_full_config_verify.py", "role": "Vérification config"}
       ]
     },
     {
@@ -277,7 +289,8 @@
         {"path": "portal-cert/server.js", "role": "API Node Express"},
         {"path": "portal-shared/js/cert-app.js", "role": "Boot application"},
         {"path": "portal-shared/js/cybercorp-hub.js", "role": "Loaders hubs"},
-        {"path": "portal-shared/js/governance.js", "role": "Gouvernance"},
+        {"path": "portal-shared/js/helk-integration.js", "role": "Module HELK"},
+        {"path": "portal-shared/js/velociraptor-integration.js", "role": "Module Velociraptor"},
         {"path": "portal-shared/js/cert-tools.js", "role": "Outils CERT investigation"},
         {"path": "portal-shared/js/portal-doc.js", "role": "Documentation"},
         {"path": "portal-shared/js/portal-doc-inventory.js", "role": "Inventaire premium++"},

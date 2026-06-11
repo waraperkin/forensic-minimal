@@ -28,10 +28,17 @@ wait_http "TheHive" "$THEHIVE_URL/api/status"
 wait_http "Cortex" "$CORTEX_URL/api/status"
 echo "[INIT] TheHive et Cortex répondent"
 
-BODY="{\"type\":\"cortex\",\"name\":\"Cortex-Forensic\",\"url\":\"${CORTEX_URL}\",\"auth\":{\"type\":\"bearer\",\"key\":\"${CORTEX_API_KEY}\"},\"includedTheHiveOrganisations\":[\"*\"],\"statusCheckInterval\":60}"
-
 AUTH_CUSTOM="${THEHIVE_ADMIN_LOGIN:-}:${THEHIVE_ADMIN_PASSWORD:-}"
 AUTH_DEFAULT="${TH_DEFAULT_LOGIN}:${TH_DEFAULT_PASS}"
+
+BRAND_CODE=$(curl -sS -o /tmp/th_branding.json -w '%{http_code}' -u "$AUTH_DEFAULT" -X POST "$THEHIVE_URL/api/v1/branding" \
+  -F "title=Forensic Minimal" || printf '%s' "000")
+case "$BRAND_CODE" in
+  200|201|204|409) echo "[INIT] TheHive branding : HTTP $BRAND_CODE" ;;
+  *) echo "[INIT] WARN TheHive branding HTTP $BRAND_CODE" >&2 ;;
+esac
+
+BODY="{\"type\":\"cortex\",\"name\":\"Cortex-Forensic\",\"url\":\"${CORTEX_URL}\",\"auth\":{\"type\":\"bearer\",\"key\":\"${CORTEX_API_KEY}\"},\"includedTheHiveOrganisations\":[\"*\"],\"statusCheckInterval\":60}"
 
 CODE="000"
 for cand in "$AUTH_CUSTOM" "$AUTH_DEFAULT"; do

@@ -19,8 +19,6 @@ function svcDotMap() {
     Logstash: 'd-ls',
     [i18n.t('health.portal_it')]: 'd-it',
     Dashboards: 'd-osd',
-    'VigilSOC UI': 'd-vigilsoc',
-    VigilSOC: 'd-vigilsoc',
   };
 }
 
@@ -74,14 +72,16 @@ function tab(raw) {
   if (t === 'users' && window.PortalUsers) PortalUsers.loadPortalUsers();
   if (t === 'soc-tools' && window.SocTools) {
     SocTools.loadSocToolsPage();
-    if (window.VigilIntegration) VigilIntegration.enhanceToolsTab();
+  }
+  if (t === 'helk-hunting' && window.HelkIntegration) {
+    HelkIntegration.loadHelkHuntingPage();
+  }
+  if (t === 'velociraptor-dfir' && window.VelociraptorIntegration) {
+    VelociraptorIntegration.loadVelociraptorPage();
   }
   if (t === 'access-center' && window.AccessCenter) {
     AccessCenter.loadAccessCenter();
-    if (window.VigilIntegration) VigilIntegration.enhanceToolsTab();
   }
-  if (t === 'upload' && window.VigilIntegration) VigilIntegration.enhanceUploadTab();
-  if (t === 'tokens' && window.VigilIntegration) setTimeout(() => VigilIntegration.enhanceTokensTab(), 400);
   const masterZone = t === 'cases' ? 'incidents' : t === 'master-users' ? 'users' : t;
   if (window.PortalMasterZones && PortalMasterZones.MASTER_TABS.has(masterZone) && t !== 'users') {
     PortalMasterZones.loadMasterZone(api, masterZone);
@@ -256,6 +256,7 @@ async function doUpload() {
   fd.append('analyst', document.getElementById('ana').value || 'cert');
   fd.append('os_type', document.getElementById('ost').value);
   fd.append('priority', document.getElementById('prio').value);
+  if (document.getElementById('helk-send')?.checked) fd.append('helk_hunt', 'true');
   files.forEach((f) => fd.append('files', f));
 
   log(i18n.t('upload.uploading', { n: files.length }), 'info');
@@ -272,7 +273,10 @@ async function doUpload() {
       });
     });
     (d.results || []).forEach((r) => {
-      if (r.ok) log(`✓ ${r.file} → ${r.bucket}`, 'ok');
+      if (r.ok) {
+        const helkNote = r.helk?.ok ? ' + HELK' : (r.helk?.skipped ? '' : r.helk?.error ? ` (HELK: ${r.helk.error})` : '');
+        log(`✓ ${r.file} → ${r.bucket}${helkNote}`, 'ok');
+      }
       else log(`✗ ${r.file}: ${r.error}`, 'err');
     });
     const okCount = (d.results || []).filter((r) => r.ok).length;
@@ -654,6 +658,11 @@ function initCertApp() {
   bindClickableStats();
   connectWS();
   setInterval(loadStats, 15000);
+  if (window.GlobalHealthService) GlobalHealthService.startPolling();
+  if (window.HelkIntegration) HelkIntegration.refreshHelkBadges();
+  if (window.VelociraptorIntegration) VelociraptorIntegration.refreshVelociraptorBadges();
+  setInterval(() => { if (window.HelkIntegration) HelkIntegration.refreshHelkBadges(); }, 60000);
+  setInterval(() => { if (window.VelociraptorIntegration) VelociraptorIntegration.refreshVelociraptorBadges(); }, 60000);
 
   window.tab = tab;
   window.loadStats = loadStats;

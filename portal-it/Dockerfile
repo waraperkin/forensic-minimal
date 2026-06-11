@@ -5,7 +5,10 @@ COPY portal-it/package.json ./
 RUN npm install --only=production --no-fund --no-audit
 COPY portal-it/server.js ./
 COPY lib/ingest-queue.js ./lib/ingest-queue.js
+COPY lib/helk-connector.js ./lib/helk-connector.js
+COPY lib/velociraptor-connector.js ./lib/velociraptor-connector.js
 COPY lib/upload-limits.js ./lib/upload-limits.js
+COPY lib/ui-error-log.js ./lib/ui-error-log.js
 COPY portal-cert/routes/master-intakes.js ./routes/master-intakes.js
 COPY portal-cert/routes/master-ingest-errors.js ./routes/master-ingest-errors.js
 COPY portal-shared/ ./public/shared/

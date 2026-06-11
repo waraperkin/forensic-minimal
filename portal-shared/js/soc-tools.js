@@ -5,8 +5,6 @@ function socToolsBase() {
 }
 
 const SOC_TOOLS = [
-  { name: 'VigilSOC', path: '/vigilsoc/', desc: 'Console VigilSOC' },
-  { name: 'VigilSOC API', path: '/api/vigil/health' },
   { name: 'OpenSearch Dashboards', path: '/dashboards/' },
   { name: 'Timesketch', path: '/timesketch/' },
   { name: 'OpenCTI', path: '/cti/' },
@@ -15,6 +13,9 @@ const SOC_TOOLS = [
   { name: 'Cortex', path: '/cortex/' },
   { name: 'MinIO', path: '/minio/' },
   { name: 'Grafana', path: '/grafana/' },
+  { name: 'HELK Kibana', path: '/helk/kibana/' },
+  { name: 'HELK API', path: '/helk/api/' },
+  { name: 'Velociraptor DFIR', path: '/velociraptor/' },
 ];
 
 function renderSocToolsTable(container) {
@@ -40,6 +41,7 @@ function renderSocToolsTableInner(container) {
                 <td><code class="cc-url-cell">${url}</code></td>
                 <td class="cc-soc-actions">
                   <button type="button" class="fp-btn fp-btn-sm fp-btn-primary" data-open-url="${url}">Ouvrir</button>
+                  <button type="button" class="fp-btn fp-btn-sm fp-btn-ghost" data-embed-url="${url}" data-embed-name="${t.name}">Intégrer</button>
                   <button type="button" class="fp-btn fp-btn-sm fp-btn-ghost" data-copy-url="${url}">Copier</button>
                 </td>
               </tr>`;
@@ -47,6 +49,7 @@ function renderSocToolsTableInner(container) {
           </tbody>
         </table>
       </div>
+      <div id="soc-proxy-embed" hidden aria-hidden="true"></div>
     </div>`;
   container.querySelectorAll('[data-open-url]').forEach((btn) => {
     btn.addEventListener('click', () => window.open(btn.dataset.openUrl, '_blank', 'noopener'));
@@ -60,6 +63,19 @@ function renderSocToolsTableInner(container) {
       } catch (_) {
         window.prompt(i18n.t('msg.copier_lurl'), btn.dataset.copyUrl);
       }
+    });
+  });
+  container.querySelectorAll('[data-embed-url]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const embed = document.getElementById('soc-proxy-embed');
+      if (!embed || !window.ProxyFrame) return;
+      embed.hidden = false;
+      embed.setAttribute('aria-hidden', 'false');
+      embed.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      ProxyFrame.mount(embed, {
+        url: btn.dataset.embedUrl,
+        service: { name: btn.dataset.embedName || 'SOC' },
+      });
     });
   });
 }

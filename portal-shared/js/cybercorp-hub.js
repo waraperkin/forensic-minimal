@@ -214,20 +214,7 @@ async function appendHubLiveBoard(root, kind) {
           <div class="cc-hub-kpi-tile"><div class="cc-hub-kpi-label">MISP</div><div class="cc-hub-kpi-value">${ti.misp || 0}</div></div>
         </div>
         <h4 class="fp-section-sub fp-section-spaced">Connecteurs</h4>
-        ${miniTable(rows, [{ key: 'name', label: 'Nom' }, { key: 'type', label: 'Type' }, { key: 'status', label: 'Statut' }])}
-        <div id="vigil-cti-live-kpi" class="cc-vigil-live-kpi fp-section-spaced"></div>`;
-      if (window.VigilIntegration) {
-        const b = await VigilIntegration.fetchBundle().catch(() => null);
-        const kpi = board.querySelector('#vigil-cti-live-kpi');
-        if (kpi && b) {
-          kpi.innerHTML = `<h4 class="fp-section-sub">${i18nT('vigil.panel_title')}</h4>
-            <div class="cc-hub-kpi-row">
-              <div class="cc-hub-kpi-tile"><div class="cc-hub-kpi-label">${i18nT('vigil.kpi_alerts')}</div><div class="cc-hub-kpi-value">${b.alerts?.count ?? 0}</div></div>
-              <div class="cc-hub-kpi-tile"><div class="cc-hub-kpi-label">${i18nT('vigil.kpi_ioc')}</div><div class="cc-hub-kpi-value">${b.ioc?.count ?? 0}</div></div>
-              <div class="cc-hub-kpi-tile"><div class="cc-hub-kpi-label">${i18nT('vigil.kpi_assets')}</div><div class="cc-hub-kpi-value">${b.assets?.count ?? 0}</div></div>
-            </div>`;
-        }
-      }
+        ${miniTable(rows, [{ key: 'name', label: 'Nom' }, { key: 'type', label: 'Type' }, { key: 'status', label: 'Statut' }])}`;
     } else if (kind === 'ingest-evidence') {
       const [ingest, certUp, itUp] = await Promise.all([
         fetchJ('/api/overview/ingest').catch(() => ({ total: 0 })),
@@ -381,7 +368,6 @@ async function loadThreatIntelHub() {
     `;
     }));
     await appendHubLiveBoard(root, 'threat-intel');
-    if (window.VigilIntegration) await VigilIntegration.mountCtiPanel(root);
     return;
   }
   bindHubCards(root);

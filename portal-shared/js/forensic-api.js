@@ -16,25 +16,26 @@ class ForensicAPI {
 
   async request(path, options = {}) {
     const { retries = this.retries, timeoutMs = this.timeoutMs } = options;
+    const endpoint = this.url(path);
     let lastErr;
     for (let i = 0; i <= retries; i++) {
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
         const headers = {
           Accept: 'application/json',
           ...this.getHeaders(),
           ...(options.headers || {}),
         };
-        const resp = await fetch(this.url(path), {
+        const fetchFn = window.PortalApiClient?.portalFetch || fetch;
+        const resp = await fetchFn(endpoint, {
           ...options,
           headers,
-          signal: controller.signal,
+          timeoutMs,
         });
-        clearTimeout(timer);
         return resp;
       } catch (e) {
-        lastErr = e;
+        lastErr = window.PortalApiClient?.normalize
+          ? PortalApiClient.normalize(e, endpoint)
+          : e;
         if (i >= retries) break;
         await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
       }
@@ -43,12 +44,16 @@ class ForensicAPI {
   }
 
   async json(path, options = {}) {
+    const endpoint = this.url(path);
     const resp = await this.request(path, options);
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      const err = new Error(data.error || data.message || `HTTP ${resp.status}`);
-      err.status = resp.status;
-      err.data = data;
+      const err = window.PortalApiClient?.fromHttp
+        ? PortalApiClient.fromHttp(resp.status, data, endpoint)
+        : Object.assign(new Error(data.error || data.message || `HTTP ${resp.status}`), {
+          status: resp.status,
+          data,
+        });
       throw err;
     }
     return data;
@@ -116,14 +121,24 @@ class ForensicAPI {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve({ status: xhr.status, data });
         } else {
-          const err = new Error(data.error || `HTTP ${xhr.status}`);
-          err.status = xhr.status;
-          err.data = data;
+          const err = window.PortalApiClient?.fromHttp
+            ? PortalApiClient.fromHttp(xhr.status, data, url)
+            : Object.assign(new Error(data.error || `HTTP ${xhr.status}`), { status: xhr.status, data });
           reject(err);
         }
       };
-      xhr.onerror = () => reject(new Error(i18n.t('msg.erreur_reseau')));
-      xhr.onabort = () => reject(new Error(i18n.t('msg.requete_annulee')));
+      xhr.onerror = () => {
+        const err = window.PortalApiClient?.fromNetwork
+          ? PortalApiClient.fromNetwork(url, new Error('network'))
+          : new Error(i18n.t('msg.erreur_reseau'));
+        reject(err);
+      };
+      xhr.onabort = () => {
+        const err = window.PortalApiClient?.fromNetwork
+          ? PortalApiClient.fromNetwork(url, new Error('abort'))
+          : new Error(i18n.t('msg.requete_annulee'));
+        reject(err);
+      };
       xhr.send(formData);
     });
   }

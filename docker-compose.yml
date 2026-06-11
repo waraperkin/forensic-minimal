@@ -23,6 +23,12 @@ networks:
     ipam:
       config:
         - subnet: 172.26.0.0/16
+  helk_net:
+    external: true
+    name: helk_net
+  velociraptor_net:
+    external: true
+    name: velociraptor_net
 
 volumes:
   postgres-data:
@@ -47,6 +53,9 @@ volumes:
   cert-portal-uploads:
   it-portal-uploads:
   shared-uploads:
+  velociraptor-sidecar-data:
+    external: true
+    name: velociraptor-sidecar_velociraptor-data
 
 services:
 
@@ -855,11 +864,14 @@ services:
       - ./dashboards/timesketch:/var/lib/grafana/dashboards/timesketch:ro
       - ./dashboards/grafana/fp-master:/var/lib/grafana/dashboards/fp-master:ro
       - ./dashboards/grafana/forensic-legacy:/var/lib/grafana/dashboards/forensic-legacy:ro
+      - ./dashboards/grafana/helk:/var/lib/grafana/dashboards/helk:ro
+      - ./dashboards/grafana/velociraptor:/var/lib/grafana/dashboards/velociraptor:ro
     ports:
       - "3001:3000"
     networks:
       forensic-net:
         ipv4_address: 172.26.0.80
+      helk_net:
     depends_on:
       opensearch-node1:
         condition: service_healthy
@@ -916,50 +928,113 @@ services:
       forensic-net:
         ipv4_address: 172.26.0.83
 
-  vigilsoc-ui:
-    build:
-      context: ./portal-services/vigilsoc-ui
-      dockerfile: Dockerfile
-    container_name: vigilsoc-ui
-    restart: unless-stopped
-    networks:
-      forensic-net:
-        ipv4_address: 172.26.0.98
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/health || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+# ═══════════════════════════════════════════════════════════════
+#  HELK BRIDGE — sync OpenSearch / Timesketch / CTI
+# ═══════════════════════════════════════════════════════════════
 
-  forensic-vigil-connector:
+  helk-bridge:
     build:
-      context: ./portal-services/vigil-connector
-      dockerfile: Dockerfile
-    container_name: forensic-vigil-connector
+      context: ./helk/scripts
+      dockerfile: Dockerfile.bridge
+    container_name: forensic-helk-bridge
     restart: unless-stopped
     environment:
-      - VIGIL_CONNECTOR_PORT=8083
-      - VIGIL_API_URL=${VIGIL_API_URL:-}
-      - VIGIL_API_KEY=${VIGIL_API_KEY:-}
-      - VIGIL_ORG_ID=${VIGIL_ORG_ID:-}
-      - VIGIL_CACHE_TTL_MS=${VIGIL_CACHE_TTL_MS:-120000}
+      - HELK_ES_URL=http://helk-elasticsearch:9200
       - OPENSEARCH_URL=http://opensearch-node1:9200
       - TIMESKETCH_URL=http://timesketch-web:5000
       - TIMESKETCH_USER=${TIMESKETCH_USER}
       - TIMESKETCH_PASSWORD=${TIMESKETCH_PASSWORD}
+      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+      - MISP_URL=http://misp:80
+      - MISP_API_KEY=${MISP_ADMIN_API_KEY}
+      - THEHIVE_URL=http://thehive:9000
+      - THEHIVE_API_KEY=${THEHIVE_API_KEY:-}
+      - CORTEX_URL=http://cortex:9001
+      - CORTEX_API_KEY=${CORTEX_SECRET}
+      - SYNC_INTERVAL_SEC=120
+      - HELK_LOGSTASH_HTTP=http://helk-logstash:8080
+      - LAB_SOURCES=/lab-sources
+    volumes:
+      - ./helk/lab-sources:/lab-sources:ro
     networks:
       forensic-net:
-        ipv4_address: 172.26.0.97
+        ipv4_address: 172.26.0.95
+      helk_net:
     depends_on:
       opensearch-node1:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8083/health || exit 1"]
-      interval: 30s
-      timeout: 6s
-      retries: 5
-      start_period: 20s
+
+  helk-sigma-runner:
+    image: python:3.11-slim
+    container_name: forensic-helk-sigma-runner
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      - HELK_ES_URL=http://helk-elasticsearch:9200
+      - SIGMA_DIR=/sigma
+      - SIGMA_INTERVAL_SEC=300
+      - SIGMA_MAX_RULES=200
+      - MITRE_PATH=/mitre/enterprise-attack.json
+    volumes:
+      - ./helk/scripts/sigma_runner.py:/app/sigma_runner.py:ro
+      - ./helk/sigma:/sigma:ro
+      - ./helk/mitre:/mitre:ro
+    networks:
+      helk_net:
+    command:
+      - bash
+      - -c
+      - pip install -q requests pyyaml && python3 /app/sigma_runner.py
+
+# ═══════════════════════════════════════════════════════════════
+#  VELOCIRAPTOR BRIDGE — export CERT/IT/OS/TS/CTI
+# ═══════════════════════════════════════════════════════════════
+
+  velociraptor-bridge:
+    build:
+      context: ./velociraptor/export
+      dockerfile: Dockerfile.bridge
+    container_name: forensic-velociraptor-bridge
+    restart: unless-stopped
+    environment:
+      - CERT_PORTAL_URL=http://cert-portal:3000
+      - IT_PORTAL_URL=http://it-portal:3001
+      - OPENSEARCH_URL=http://opensearch-node1:9200
+      - TIMESKETCH_URL=http://timesketch-web:5000
+      - TIMESKETCH_USER=${TIMESKETCH_USER}
+      - TIMESKETCH_PASSWORD=${TIMESKETCH_PASSWORD}
+      - THEHIVE_URL=http://thehive:9000
+      - THEHIVE_API_KEY=${THEHIVE_API_KEY:-}
+      - CORTEX_URL=http://cortex:9001
+      - CORTEX_API_KEY=${CORTEX_SECRET}
+      - HELK_LOGSTASH_HTTP=http://helk-logstash:8080
+      - HELK_ENABLED=true
+      - VR_LAB_DATA=/lab-data
+      - VR_LAB_COLLECTIONS=/lab-collections
+      - VR_OFFICIAL_ARTIFACTS=/artifacts/official
+      - VR_CUSTOM_ARTIFACTS=/artifacts/custom
+      - VELOCIRAPTOR_SERVER_CONFIG=/config/server.config.yaml
+      - VELOCIRAPTOR_API_CONFIG=/config/api.config.yaml
+      - VELOCIRAPTOR_API_URL=https://velociraptor-server:8002
+    volumes:
+      - ./velociraptor/config/server.config.yaml:/config/server.config.yaml:ro
+      - ./velociraptor/config/api.config.yaml:/config/api.config.yaml:ro
+      - ./velociraptor/lab-data:/lab-data:ro
+      - ./velociraptor/artifacts/custom:/artifacts/custom:ro
+      - ./velociraptor/artifacts/official:/artifacts/official:ro
+      - ./velociraptor/lab-collections:/lab-collections
+      - velociraptor-sidecar-data:/data:ro
+    networks:
+      forensic-net:
+        ipv4_address: 172.26.0.96
+      velociraptor_net:
+      helk_net:
+    depends_on:
+      opensearch-node1:
+        condition: service_healthy
+      cert-portal:
+        condition: service_started
 
 # ═══════════════════════════════════════════════════════════════
 #  PORTAIL CERT — Portail principal CERT/SOC
@@ -1008,12 +1083,17 @@ services:
       - MISP_API_KEY=${MISP_ADMIN_API_KEY}
       - LOGSTASH_HOST=logstash
       - LOGSTASH_PORT=5045
+      - HELK_LOGSTASH_HTTP=http://helk-logstash:8080
+      - HELK_ELASTICSEARCH_URL=http://helk-elasticsearch:9200
+      - HELK_BRIDGE_URL=http://helk-bridge:8095
+      - HELK_ENABLED=true
+      - VR_BRIDGE_URL=http://velociraptor-bridge:8097
+      - VELOCIRAPTOR_ENABLED=true
       - UPLOAD_MAX_SIZE=${CERT_PORTAL_UPLOAD_MAX_SIZE}
       - UPLOAD_MAX_FILES=${UPLOAD_MAX_FILES}
       - UPLOAD_MAX_SIZE_BYTES=${UPLOAD_MAX_SIZE_BYTES}
       - SECRET_KEY=${CERT_PORTAL_SECRET}
       - IT_PORTAL_URL=http://localhost/it/
-      - VIGIL_CONNECTOR_URL=http://forensic-vigil-connector:8083
       - NODE_ENV=production
       - PORT=3000
     ports:
@@ -1025,6 +1105,8 @@ services:
     networks:
       forensic-net:
         ipv4_address: 172.26.0.90
+      helk_net:
+      velociraptor_net:
     depends_on:
       minio:
         condition: service_healthy
@@ -1032,8 +1114,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      forensic-vigil-connector:
-        condition: service_started
 
 # ═══════════════════════════════════════════════════════════════
 #  PORTAIL IT — Portail équipes IT locales (token-based)
@@ -1054,6 +1134,12 @@ services:
       - CERT_PORTAL_URL=http://cert-portal:3000
       - LOGSTASH_HOST=logstash
       - LOGSTASH_PORT=5045
+      - HELK_LOGSTASH_HTTP=http://helk-logstash:8080
+      - HELK_ELASTICSEARCH_URL=http://helk-elasticsearch:9200
+      - HELK_BRIDGE_URL=http://helk-bridge:8095
+      - HELK_ENABLED=true
+      - VR_BRIDGE_URL=http://velociraptor-bridge:8097
+      - VELOCIRAPTOR_ENABLED=true
       - UPLOAD_MAX_SIZE=${CERT_PORTAL_UPLOAD_MAX_SIZE}
       - UPLOAD_MAX_FILES=${UPLOAD_MAX_FILES}
       - UPLOAD_MAX_SIZE_BYTES=${UPLOAD_MAX_SIZE_BYTES}
@@ -1067,6 +1153,8 @@ services:
     networks:
       forensic-net:
         ipv4_address: 172.26.0.91
+      helk_net:
+      velociraptor_net:
     depends_on:
       minio:
         condition: service_healthy
@@ -1099,6 +1187,8 @@ services:
     networks:
       forensic-net:
         ipv4_address: 172.26.0.100
+      helk_net:
+      velociraptor_net:
     depends_on:
       cert-portal:
         condition: service_started
@@ -1113,10 +1203,6 @@ services:
       thehive:
         condition: service_started
       misp:
-        condition: service_started
-      forensic-vigil-connector:
-        condition: service_started
-      vigilsoc-ui:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/nginx-health || exit 1"]

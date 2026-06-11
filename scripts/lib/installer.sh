@@ -8,6 +8,8 @@
 #   - cleanup_processes / cleanup_ports (PHASE 2)
 #   - status_full (PHASE 4)
 #   - fp_start_tests (PHASE 6)
+#   - fp_verify_system / fp_verify_monorepo (orchestrateur -full-start)
+#   - fp_full_start_health_global / fp_full_start_extended_tests / fp_full_start_final_report
 #
 # Idempotent — réexécutable sans erreur ni régression.
 # Ne tue jamais le script (return au lieu de exit).
@@ -1407,4 +1409,390 @@ fp_start_tests() {
 
   [ "$_had_e" -eq 1 ] && set -e
   return 0
+}
+
+# ──────────────────────────────────────────────────────────────
+#  ORCHESTRATEUR FULL-START (./forensic.sh -full-start)
+# ──────────────────────────────────────────────────────────────
+FP_ORCH_REPORT=()
+FP_ORCH_TEST_OK=0
+FP_ORCH_TEST_FAIL=0
+
+_fp_orch_note() {
+  FP_ORCH_REPORT+=("$1")
+  fp_log start "orch: $1"
+}
+
+_fp_orch_run_test() {
+  local label="$1"; shift
+  info "Test: $label"
+  if "$@" >> "${FP_LOG_START}" 2>&1; then
+    ok "$label"
+    FP_ORCH_TEST_OK=$((FP_ORCH_TEST_OK + 1))
+    _fp_orch_note "OK: $label"
+    return 0
+  fi
+  warn "$label — échec (voir logs/forensic_start.log)"
+  FP_ORCH_TEST_FAIL=$((FP_ORCH_TEST_FAIL + 1))
+  _fp_orch_note "FAIL: $label"
+  return 1
+}
+
+# PHASE 1 — Vérification système (OS, ressources, ports, sudo)
+fp_verify_system() {
+  local _had_e=0
+  case $- in *e*) _had_e=1;; esac
+  set +e
+  step "ORCHESTRATEUR PHASE 1 — Vérification système"
+  fp_log_init
+  fp_log start "=== fp_verify_system ==="
+
+  local os_ok=0
+  if [ -f /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case "${ID:-}:${ID_LIKE:-}" in
+      *debian*|*ubuntu*) os_ok=1; ok "OS compatible: ${PRETTY_NAME:-$ID}" ;;
+      *) warn "OS non Debian/Ubuntu (${PRETTY_NAME:-inconnu}) — poursuite sans garantie" ;;
+    esac
+  else
+    warn "/etc/os-release absent — OS non vérifié"
+  fi
+  [ "$os_ok" -eq 1 ] && _fp_orch_note "OS: ${PRETTY_NAME:-OK}"
+
+  local cpus mem_mb disk_pct
+  cpus=$(nproc 2>/dev/null || echo "?")
+  mem_mb=$(awk '/MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo "?")
+  disk_pct=$(df -P "${DIR:-.}" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')
+  info "CPU: ${cpus} cœurs · RAM: ~${mem_mb} MiB · Disque (${DIR:-.}): ${disk_pct:-?}%"
+  if [ "${mem_mb:-0}" != "?" ] && [ "$mem_mb" -lt 4096 ] 2>/dev/null; then
+    warn "RAM < 4 Go — démarrage possible mais lent"
+  fi
+  if [ -n "${disk_pct:-}" ] && [ "$disk_pct" -ge 95 ] 2>/dev/null; then
+    warn "Disque quasi plein (${disk_pct}%)"
+  fi
+
+  local critical_ports=(9200 5601 3000 9000 8080 8081 80 443)
+  local port busy=()
+  for port in "${critical_ports[@]}"; do
+    if command -v ss >/dev/null 2>&1; then
+      ss -tlnH "sport = :$port" 2>/dev/null | grep -q . && busy+=("$port")
+    elif command -v lsof >/dev/null 2>&1; then
+      lsof -iTCP:"$port" -sTCP:LISTEN -P -n >/dev/null 2>&1 && busy+=("$port")
+    fi
+  done
+  if [ "${#busy[@]}" -gt 0 ]; then
+    warn "Ports déjà occupés: ${busy[*]} (cleanup_ports tentera de libérer si FP_KILL_PORTS=1)"
+    _fp_orch_note "Ports occupés: ${busy[*]}"
+  else
+    ok "Ports critiques libres: ${critical_ports[*]}"
+  fi
+
+  if [ "$(id -u)" -eq 0 ]; then
+    ok "Droits: root"
+  elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    ok "Droits: sudo NOPASSWD"
+  elif command -v sudo >/dev/null 2>&1; then
+    warn "sudo interactif — l'installation auto apt peut demander un mot de passe"
+    _fp_orch_note "sudo: interactif"
+  else
+    warn "sudo absent — installation packages limitée"
+    _fp_orch_note "sudo: absent"
+  fi
+
+  [ "$_had_e" -eq 1 ] && set -e
+  return 0
+}
+
+# PHASE 2 — Dépendances étendues (node, npm, wget, unzip, tar…)
+fp_install_dependencies_extended() {
+  local _had_e=0
+  case $- in *e*) _had_e=1;; esac
+  set +e
+  step "ORCHESTRATEUR PHASE 2 — Dépendances étendues"
+  fp_log_init
+
+  _fp_pkg_ext() {
+    case "$1" in
+      node)  echo "nodejs" ;;
+      npm)   echo "npm" ;;
+      wget)  echo "wget" ;;
+      unzip) echo "unzip" ;;
+      tar)   echo "tar" ;;
+      *)     echo "$1" ;;
+    esac
+  }
+
+  local extra=(wget unzip tar node npm)
+  local missing=()
+  local cmd
+  for cmd in "${extra[@]}"; do
+    command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+  done
+
+  if [ "${#missing[@]}" -eq 0 ]; then
+    ok "Dépendances étendues présentes: ${extra[*]}"
+    [ "$_had_e" -eq 1 ] && set -e
+    return 0
+  fi
+
+  warn "Manquants: ${missing[*]} — installation auto"
+  local pkgs=() c
+  for c in "${missing[@]}"; do pkgs+=("$(_fp_pkg_ext "$c")"); done
+  local pkgs_uniq
+  pkgs_uniq=$(printf '%s\n' "${pkgs[@]}" | awk '!s[$0]++')
+
+  if command -v apt-get >/dev/null 2>&1; then
+    _fp_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -y >> "$FP_LOG_INSTALL" 2>&1 || true
+    # shellcheck disable=SC2086
+    _fp_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y $pkgs_uniq >> "$FP_LOG_INSTALL" 2>&1 \
+      && ok "Packages étendus installés" \
+      || warn "Installation partielle — voir $FP_LOG_INSTALL"
+  else
+    warn "apt-get absent — installer manuellement: $pkgs_uniq"
+  fi
+
+  [ "$_had_e" -eq 1 ] && set -e
+  return 0
+}
+
+# PHASE 3 — Vérification structure monorepo
+fp_verify_monorepo() {
+  local _had_e=0
+  case $- in *e*) _had_e=1;; esac
+  set +e
+  step "ORCHESTRATEUR PHASE 3 — Vérification monorepo"
+  local root="${DIR:-.}"
+  local dirs=(helk velociraptor config portal-cert portal-it dashboards scripts tests)
+  local missing=() d
+  for d in "${dirs[@]}"; do
+    if [ ! -d "$root/$d" ]; then
+      missing+=("$d")
+      err "Dossier manquant: $d/"
+    else
+      ok "$d/"
+    fi
+  done
+  if [ "${#missing[@]}" -gt 0 ]; then
+    _fp_orch_note "Monorepo incomplet: ${missing[*]}"
+    [ "$_had_e" -eq 1 ] && set -e
+    return 1
+  fi
+
+  [ -f "$root/docker-compose.yml" ] || { err "docker-compose.yml absent"; return 1; }
+  local compose="${FP_COMPOSE:-docker compose}"
+  if $compose -f "$root/docker-compose.yml" config >/dev/null 2>&1; then
+    ok "docker-compose.yml valide"
+  else
+    err "docker-compose.yml invalide"
+    $compose -f "$root/docker-compose.yml" config 2>&1 | tail -20
+    return 1
+  fi
+
+  [ -x "$root/forensic.sh" ] || chmod +x "$root/forensic.sh" 2>/dev/null || true
+  local nfix=0 shf
+  for shf in "$root"/scripts/*.sh; do
+    [ -f "$shf" ] || continue
+    [ -x "$shf" ] || { chmod +x "$shf" 2>/dev/null && nfix=$((nfix + 1)); }
+  done
+  [ "$nfix" -gt 0 ] && info "$nfix script(s) rendus exécutables"
+
+  ok "Structure monorepo OK"
+  [ "$_had_e" -eq 1 ] && set -e
+  return 0
+}
+
+# PHASE 5bis — Santé agrégée /api/health/global + services clés
+fp_full_start_health_global() {
+  local _had_e=0
+  case $- in *e*) _had_e=1;; esac
+  set +e
+  step "ORCHESTRATEUR PHASE 5 — Santé globale plateforme"
+
+  local base="${FP_ORCH_BASE_URL:-https://localhost}"
+  local n=0 body code rc=0
+  while [ "$n" -lt 36 ]; do
+    code=$(curl -sk --max-time 8 -o /dev/null -w '%{http_code}' "$base/api/health/global" 2>/dev/null || echo "000")
+    [ "$code" = "200" ] && break
+    n=$((n + 1)); sleep 5
+  done
+
+  body=$(curl -sk --max-time 12 "$base/api/health/global" 2>/dev/null || true)
+  if [ -z "$body" ]; then
+    warn "/api/health/global injoignable ($base)"
+    _fp_orch_note "health/global: injoignable"
+    [ "$_had_e" -eq 1 ] && set -e
+    return 1
+  fi
+
+  if ! echo "$body" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("  (réponse non-JSON)")
+    sys.exit(1)
+svcs = d.get("services") or d.get("components") or []
+if isinstance(svcs, dict):
+    svcs = [{"name": k, **(v if isinstance(v, dict) else {"status": v})} for k, v in svcs.items()]
+down = degraded = up = 0
+for s in svcs:
+    st = (s.get("status") or s.get("state") or "").upper()
+    name = s.get("name") or s.get("id") or "?"
+    if st in ("DOWN", "ERROR", "CRITICAL", "UNHEALTHY"):
+        print(f"  ✗ {name}: {st or \"DOWN\"}"); down += 1
+    elif st in ("DEGRADED", "WARN", "WARNING"):
+        print(f"  ~ {name}: {st}"); degraded += 1
+    else:
+        print(f"  ✓ {name}: {st or \"UP\"}"); up += 1
+print(f"\n  Résumé: {up} UP · {degraded} DEGRADED · {down} DOWN")
+sys.exit(0 if down == 0 else 1)
+' 2>/dev/null; then
+    rc=1
+    warn "Santé globale partielle"
+  else
+    ok "Santé globale OK"
+  fi
+
+  local checks=(
+    "HELK|${base}/api/helk/status|200"
+    "Velociraptor|${base}/api/velociraptor/status|200"
+    "Timesketch|http://localhost:5000/login|200,301,302"
+    "Grafana|${base}/grafana/api/health|200"
+    "OpenSearch|http://localhost:9200/_cluster/health|200"
+    "MISP|http://localhost:8080/users/login|200,301,302"
+    "TheHive|http://localhost:9002/thehive/api/status|200"
+    "Cortex|http://localhost:9001/api/status|200,401"
+    "Nginx|${base}/|200,301,302"
+  )
+  local entry name url expects c
+  for entry in "${checks[@]}"; do
+    IFS='|' read -r name url expects <<< "$entry"
+    c=$(curl -sk --max-time 8 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000")
+    if echo ",$expects," | grep -q ",$c,"; then
+      ok "$name → HTTP $c"
+    else
+      warn "$name → HTTP $c (attendu ∈ {$expects})"
+      rc=1
+    fi
+  done
+
+  [ "$_had_e" -eq 1 ] && set -e
+  return "$rc"
+}
+
+# PHASE 6 — Tests étendus (API, ingestion, pivots, Playwright, UI)
+fp_full_start_extended_tests() {
+  local _had_e=0
+  case $- in *e*) _had_e=1;; esac
+  set +e
+  step "ORCHESTRATEUR PHASE 6 — Tests automatiques étendus"
+  fp_log start "=== fp_full_start_extended_tests ==="
+
+  if [ -f "$DIR/scripts/global_health_dashboard_verify.py" ]; then
+    _fp_orch_run_test "API health global" python3 "$DIR/scripts/global_health_dashboard_verify.py" || true
+  fi
+  if [ -f "$DIR/scripts/helk_velociraptor_master_verify.py" ]; then
+    _fp_orch_run_test "API HELK/VR" python3 "$DIR/scripts/helk_velociraptor_master_verify.py" || true
+  fi
+  if [ -f "$DIR/scripts/crosspivot_verify.py" ]; then
+    _fp_orch_run_test "Pivots SOC (cross-pivot)" python3 "$DIR/scripts/crosspivot_verify.py" || true
+  fi
+  if [ -x "$DIR/scripts/test_ingest_e2e.sh" ]; then
+    _fp_orch_run_test "Ingestion E2E" bash "$DIR/scripts/test_ingest_e2e.sh" || true
+  fi
+  if [ -f "$DIR/scripts/ui_campaign_verify.py" ]; then
+    _fp_orch_run_test "Campagne UI (OSD/Grafana/TS/portails)" python3 "$DIR/scripts/ui_campaign_verify.py" || true
+  fi
+
+  if [ "${FP_ORCH_SKIP_PLAYWRIGHT:-0}" != "1" ] && [ -f "$DIR/tests/playwright.config.ts" ]; then
+    if command -v npx >/dev/null 2>&1; then
+      step "Playwright — projet ui-integration"
+      local pw_log="$FP_LOG_DIR/full-start-playwright.log"
+      local pw_rc=0
+      (
+        cd "$DIR/tests" || exit 1
+        export BASE_URL="${FP_ORCH_BASE_URL:-https://localhost}"
+        export NODE_OPTIONS="${NODE_OPTIONS:---use-system-ca}"
+        PLAYWRIGHT_HTML_OPEN=never npx playwright test \
+          --config=playwright.config.ts \
+          --project=ui-integration
+      ) 2>&1 | tee "$pw_log" || pw_rc=$?
+      if [ "$pw_rc" -eq 0 ]; then
+        ok "Playwright ui-integration"
+        FP_ORCH_TEST_OK=$((FP_ORCH_TEST_OK + 1))
+      else
+        warn "Playwright ui-integration — échecs (voir $pw_log)"
+        FP_ORCH_TEST_FAIL=$((FP_ORCH_TEST_FAIL + 1))
+      fi
+    else
+      warn "npx absent — Playwright ignoré (installer nodejs/npm)"
+    fi
+  fi
+
+  info "Bilan tests orchestrateur: ${FP_ORCH_TEST_OK} OK · ${FP_ORCH_TEST_FAIL} KO"
+  [ "$_had_e" -eq 1 ] && set -e
+  return 0
+}
+
+# PHASE 7 — Rapport final
+fp_full_start_final_report() {
+  local rc="${1:-0}"
+  local end_ts dur min sec
+  end_ts=$(date +%s)
+  dur=$((end_ts - ${FP_ORCH_START_TS:-end_ts}))
+  min=$((dur / 60))
+  sec=$((dur % 60))
+
+  echo ""
+  echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${BLUE}║${NC}  RAPPORT FINAL — ./forensic.sh -full-start"
+  echo -e "${BLUE}╠══════════════════════════════════════════════════════════════╣${NC}"
+  printf "${BLUE}║${NC}  Durée totale: %dm %02ds\n" "$min" "$sec"
+  printf "${BLUE}║${NC}  Tests orchestrateur: %s OK · %s KO\n" "${FP_ORCH_TEST_OK:-0}" "${FP_ORCH_TEST_FAIL:-0}"
+  if [ "${#START_OK[@]}" -gt 0 ] 2>/dev/null; then
+    printf "${BLUE}║${NC}  Étapes start: %s OK" "${#START_OK[@]}"
+    [ "${#START_FAIL[@]:-0}" -gt 0 ] && printf " · %s échecs" "${#START_FAIL[@]}"
+    echo ""
+  fi
+  echo -e "${BLUE}╠══════════════════════════════════════════════════════════════╣${NC}"
+
+  if command -v docker >/dev/null 2>&1; then
+    local up total
+    total=$(docker ps -a --filter "name=forensic" -q 2>/dev/null | wc -l | tr -d ' ')
+    up=$(docker ps --filter "name=forensic" --filter "status=running" -q 2>/dev/null | wc -l | tr -d ' ')
+    echo -e "${BLUE}║${NC}  Containers forensic-*: ${up}/${total} running"
+    docker ps -a --filter "name=forensic" --filter "status=exited" \
+      --format '  ✗ {{.Names}} ({{.Status}})' 2>/dev/null | head -5 \
+      | sed "s/^/${BLUE}║${NC}/" || true
+    docker ps -a --filter "name=forensic" --filter "status=restarting" \
+      --format '  ↻ {{.Names}} ({{.Status}})' 2>/dev/null | head -5 \
+      | sed "s/^/${BLUE}║${NC}/" || true
+  fi
+
+  if [ "${#FP_ORCH_REPORT[@]}" -gt 0 ]; then
+    echo -e "${BLUE}╠══════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${BLUE}║${NC}  Notes:"
+    local line
+    for line in "${FP_ORCH_REPORT[@]}"; do
+      echo -e "${BLUE}║${NC}    • $line"
+    done
+  fi
+
+  echo -e "${BLUE}╠══════════════════════════════════════════════════════════════╣${NC}"
+  echo -e "${BLUE}║${NC}  Conseils:"
+  echo -e "${BLUE}║${NC}    • Statut détaillé : ./forensic.sh status"
+  echo -e "${BLUE}║${NC}    • Santé OpenSearch : ./forensic.sh fix-opensearch"
+  echo -e "${BLUE}║${NC}    • QA complète     : ./forensic.sh qa-ultra"
+  echo -e "${BLUE}║${NC}    • Logs            : tail -50 logs/forensic_start.log"
+  echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+  echo ""
+
+  if [ "$rc" -eq 0 ] && [ "${FP_ORCH_TEST_FAIL:-0}" -eq 0 ]; then
+    ok "FULL-START terminé avec succès"
+  else
+    warn "FULL-START terminé avec avertissements — validation humaine recommandée"
+  fi
+  fp_log start "=== full-start report rc=$rc tests_ok=${FP_ORCH_TEST_OK} tests_fail=${FP_ORCH_TEST_FAIL} dur=${dur}s ==="
+  return "$rc"
 }

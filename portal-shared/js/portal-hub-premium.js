@@ -141,16 +141,12 @@
       kbSpark: [0, 0, 0, 0, 0], connSpark: [0, 0, 0, 0, 0],
     };
     try {
-      const [ti, siem, ingest, health, vigil] = await Promise.all([
+      const [ti, siem, ingest, health] = await Promise.all([
         ovFetch('/ti').catch(() => ({})),
         ovFetch('/siem').catch(() => ({ events: 0, indices: [] })),
         ovFetch('/ingest').catch(() => ({ total: 0, byDay: [] })),
         ovFetch('/health').catch(() => ({ summary: {}, services: [] })),
-        ovFetch('/vigil').catch(() => ({ alerts: 0, ioc: 0, assets: 0 })),
       ]);
-      m.vigilAlerts = vigil.alerts || 0;
-      m.vigilIoc = vigil.ioc || 0;
-      m.vigilAssets = vigil.assets || 0;
       m.iocTotal = ti.iocTotal || 0;
       m.opencti = ti.opencti || 0;
       m.misp = ti.misp || 0;
@@ -219,9 +215,6 @@
         { label: 'IOC total', value: m.iocTotal },
         { label: 'OpenCTI', value: m.opencti },
         { label: 'MISP', value: m.misp },
-        { label: 'vigil.kpi_alerts', value: m.vigilAlerts },
-        { label: 'vigil.kpi_ioc', value: m.vigilIoc },
-        { label: 'vigil.kpi_assets', value: m.vigilAssets },
         { label: 'SIEM', value: m.siemEvents },
       ],
       'ingest-evidence': [

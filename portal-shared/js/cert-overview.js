@@ -28,14 +28,6 @@ function formatServiceDetail(s) {
     if (n.includes('misp')) return 'Répond (login requis)';
     return 'Répond (auth)';
   }
-  if (String(s.name || '').toLowerCase().includes('vigil')) {
-    const parts = [];
-    if (s.latency_ms != null) parts.push(`${s.latency_ms} ms`);
-    if (s.api_status) parts.push(String(s.api_status));
-    if (s.vigil_mode) parts.push(s.vigil_mode);
-    if (s.errors) parts.push(String(s.errors));
-    return parts.length ? parts.join(' · ') : (code ? `HTTP ${code}` : '—');
-  }
   return code ? `HTTP ${code}` : '—';
 }
 
@@ -62,27 +54,13 @@ async function loadOverviewCert() {
   const root = document.getElementById('ov-cert-root');
   if (!root) return;
   root.innerHTML = `
-    <p class="fp-muted">${i18n.t('ui.loading')}</p>
-    <div class="fp-ds-kpi-grid fp-ds-animate-in">
-      <button type="button" class="fp-ds-card fp-ds-card-interactive fp-premium-card cc-card-click cc-vigil-kpi" data-goto-tab="threat-intel">
-        <div class="fp-ds-card-label">${i18n.t('vigil.kpi_alerts')}</div><div class="fp-ds-card-value">…</div>
-      </button>
-      <button type="button" class="fp-ds-card fp-ds-card-interactive fp-premium-card cc-card-click cc-vigil-kpi" data-goto-tab="threat-intel">
-        <div class="fp-ds-card-label">${i18n.t('vigil.kpi_ioc')}</div><div class="fp-ds-card-value">…</div>
-      </button>
-      <button type="button" class="fp-ds-card fp-ds-card-interactive fp-premium-card cc-card-click cc-vigil-e2e" data-vigil-e2e-run="1">
-        <div class="fp-ds-card-label">${i18n.t('vigil.e2e_incident')}</div><div class="fp-ds-card-value">…</div>
-      </button>
-    </div>`;
+    <p class="fp-muted">${i18n.t('ui.loading')}</p>`;
   try {
-    const [sum, health, ingest, vigil, e2e] = await Promise.all([
+    const [sum, health, ingest] = await Promise.all([
       ovFetch('/summary'),
       ovFetch('/health'),
       ovFetch('/ingest').catch(() => ({ byPortal: [], byDay: [] })),
-      ovFetch('/vigil').catch(() => ({})),
-      ovFetch('/vigil/e2e').catch(() => ({ ok: false })),
     ]);
-    const e2eCase = e2e.ok ? e2e.case_id : null;
     const services = health.services || [];
     const ti = await ovFetch('/ti').catch(() => ({ iocTotal: 0 }));
     const clusterTag = (sum.cluster || '—').toUpperCase();
@@ -118,33 +96,7 @@ async function loadOverviewCert() {
           <div class="fp-ds-card-value">${ingest.total ?? '—'}</div>
           <div class="fp-ds-card-meta">Uploads / evidence →</div>
         </button>
-        <button type="button" class="fp-ds-card fp-ds-card-interactive fp-premium-card cc-card-click cc-vigil-kpi" data-goto-tab="threat-intel">
-          <div class="fp-ds-card-label">${i18n.t('vigil.kpi_alerts')}</div>
-          <div class="fp-ds-card-value">${vigil.alerts ?? (window.VigilIntegration ? '…' : 0)}</div>
-          <div class="fp-ds-card-meta">VigilSOC →</div>
-        </button>
-        <button type="button" class="fp-ds-card fp-ds-card-interactive fp-premium-card cc-card-click cc-vigil-kpi" data-goto-tab="threat-intel">
-          <div class="fp-ds-card-label">${i18n.t('vigil.kpi_ioc')}</div>
-          <div class="fp-ds-card-value">${vigil.ioc ?? 0}</div>
-          <div class="fp-ds-card-meta">VigilSOC IOC →</div>
-        </button>
-        <button type="button" class="fp-ds-card fp-ds-card-interactive fp-premium-card cc-card-click cc-vigil-kpi" data-goto-tab="threat-intel">
-          <div class="fp-ds-card-label">${i18n.t('vigil.kpi_assets')}</div>
-          <div class="fp-ds-card-value">${vigil.assets ?? 0}</div>
-          <div class="fp-ds-card-meta">VigilSOC Assets →</div>
-        </button>
-        <a class="fp-ds-card fp-ds-card-interactive fp-premium-card cc-card-click cc-vigil-console" href="/vigilsoc/" target="_blank" rel="noopener">
-          <div class="fp-ds-card-label">${i18n.t('vigil.ui_console')}</div>
-          <div class="fp-ds-card-value">↗</div>
-          <div class="fp-ds-card-meta">${i18n.t('vigil.ui_console_hint')}</div>
-        </a>
-        <button type="button" class="fp-ds-card fp-ds-card-interactive fp-premium-card cc-card-click cc-vigil-e2e" ${e2eCase ? 'data-goto-tab="cases"' : 'data-vigil-e2e-run="1"'}>
-          <div class="fp-ds-card-label">${i18n.t('vigil.e2e_incident')}</div>
-          <div class="fp-ds-card-value">${e2eCase ? '✓' : '—'}</div>
-          <div class="fp-ds-card-meta">${e2eCase ? `${i18n.t('vigil.e2e_view')} · ${e2eCase}` : i18n.t('vigil.e2e_none')}</div>
-        </button>
       </div>
-      ${e2eCase ? `<div class="fp-alert fp-alert-ok cc-vigil-e2e-banner fp-section-spaced"><strong>${i18n.t('vigil.e2e_ready')}</strong> — ${e2eCase} · <a href="${e2e.links?.timesketch || '/timesketch/'}" target="_blank" rel="noopener">Timesketch</a> · <button type="button" class="fp-btn fp-btn-sm fp-btn-ghost" data-goto-tab="cases">${i18n.t('vigil.e2e_view')}</button></div>` : ''}
       <div class="cc-dash-grid">
         <div class="cc-dash-panel cc-chart-wrap cc-glass-panel">
           <h3 class="fp-section-sub">Ingest par portail</h3>
@@ -163,6 +115,10 @@ async function loadOverviewCert() {
       <h3 class="fp-section-sub">Santé détaillée</h3>
       <div class="fp-ds-grid fp-ds-grid-3" id="ov-cert-svcs"></div>`;
     renderServiceGrid(document.getElementById('ov-cert-svcs'), services);
+    const ghStrip = document.getElementById('gh-overview-strip');
+    if (ghStrip && window.GlobalHealthDashboard) {
+      GlobalHealthDashboard.mount(ghStrip, { compact: true });
+    }
     if (window.CybercorpCharts) {
       CybercorpCharts.ccRenderHeatmap(document.getElementById('ov-cert-heat'), services);
       const bp = ingest.byPortal || [];
@@ -186,7 +142,6 @@ async function loadOverviewCert() {
       CybercorpCharts.ccRenderTimeline(document.getElementById('ov-cert-timeline'), timeline);
     }
     if (window.CybercorpUltra) CybercorpUltra.bindClickableCards(root);
-    if (window.VigilIntegration) VigilIntegration.bindOverviewE2e(root);
   } catch (e) {
     root.innerHTML = `<p class="fp-alert fp-alert-err">${e.message}</p>`;
   }
@@ -217,28 +172,11 @@ async function loadTiIocList() {
 async function loadOverviewHealth() {
   const root = document.getElementById('ov-health-root');
   if (!root) return;
-  root.innerHTML = `<p class="fp-muted">${i18n.t('ui.loading')}</p><div id="ov-health-grid" class="fp-premium-grid fp-premium-grid-3"></div>`;
-  try {
-    const h = await ovFetch('/health');
-    root.innerHTML = `
-      <div class="fp-card-toolbar" style="margin-bottom:0.75rem">
-        <button type="button" class="fp-btn fp-btn-ghost fp-btn-sm" id="ov-health-refresh">${i18n.t('ui.verify')}</button>
-      </div>
-      <div class="cc-dash-panel">
-        <h3 class="fp-section-sub">Heatmap plateforme</h3>
-        <div class="cc-heat-grid" id="ov-health-heat"></div>
-      </div>
-      <div class="fp-premium-grid fp-premium-grid-3 fp-section-spaced" id="ov-health-grid"></div>
-      <p class="fp-muted">Cluster : <strong class="${statusClass(h.cluster)}">${h.cluster}</strong> — ${h.summary.up} UP / ${h.summary.down} DOWN</p>`;
-    document.getElementById('ov-health-refresh')?.addEventListener('click', () => loadOverviewHealth());
-    renderServiceGrid(document.getElementById('ov-health-grid'), h.services);
-    if (window.CybercorpCharts) {
-      CybercorpCharts.ccRenderHeatmap(document.getElementById('ov-health-heat'), h.services || []);
-    }
-    if (window.VigilIntegration) await VigilIntegration.renderHealthBlock(root);
-  } catch (e) {
-    root.innerHTML = `<p class="fp-alert fp-alert-err">${e.message}</p>`;
+  if (window.GlobalHealthDashboard) {
+    GlobalHealthDashboard.mount(root, { compact: false });
+    return;
   }
+  root.innerHTML = `<p class="fp-alert fp-alert-err">Global Health Dashboard indisponible</p>`;
 }
 
 async function loadOverviewIngest() {

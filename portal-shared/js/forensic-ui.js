@@ -69,14 +69,19 @@ const ForensicUI = {
   },
 
   initErrorBoundary(onError) {
+    if (window.GlobalErrorBoundary) {
+      GlobalErrorBoundary.init({ onError });
+      return;
+    }
     window.addEventListener('error', (e) => {
       console.error(e.error || e.message);
-      this.toast(i18n.t('msg.une_erreur_inattendue_est_survenue'), 'error');
+      this.toast('Une erreur inattendue est survenue', 'error');
       if (onError) onError(e);
     });
     window.addEventListener('unhandledrejection', (e) => {
       console.error(e.reason);
-      this.toast(e.reason?.message || i18n.t('msg.erreur_asynchrone'), 'error');
+      const msg = e.reason?.friendlyMessage || e.reason?.message || 'Erreur asynchrone';
+      this.toast(msg, 'error');
       if (onError) onError(e);
     });
   },

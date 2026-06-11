@@ -24,5 +24,12 @@ export default defineConfig({
   projects: [
     { name: 'ui', testDir: './ui' },
     { name: 'playwright', testDir: './playwright' },
+    {
+      name: 'ui-integration',
+      testDir: './playwright/ui-integration',
+      fullyParallel: false,
+      workers: 1,
+      retries: 1,
+    },
   ],
 });
