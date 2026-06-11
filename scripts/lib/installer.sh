@@ -8,6 +8,7 @@
 #   - cleanup_processes / cleanup_ports (PHASE 2)
 #   - status_full (PHASE 4)
 #   - fp_start_tests (PHASE 6)
+#   - fp_bootstrap_fresh_machine (orchestrateur phase 0 — machine vierge)
 #   - fp_verify_system / fp_verify_monorepo (orchestrateur -full-start)
 #   - fp_full_start_health_global / fp_full_start_extended_tests / fp_full_start_final_report
 #
@@ -1407,6 +1408,202 @@ fp_start_tests() {
   info "Bilan tests: ${ok_count} OK · ${fail_count} KO"
   fp_log start "bilan tests: OK=$ok_count FAIL=$fail_count"
 
+  [ "$_had_e" -eq 1 ] && set -e
+  return 0
+}
+
+# ──────────────────────────────────────────────────────────────
+#  PHASE 0 — Bootstrap machine vierge (clone GitHub sans .env/certs)
+# ──────────────────────────────────────────────────────────────
+_fp_bootstrap_ensure_openssl() {
+  if command -v openssl >/dev/null 2>&1; then
+    ok "openssl: $(openssl version 2>/dev/null | awk '{print $1,$2}')"
+    return 0
+  fi
+  warn "openssl absent — installation automatique..."
+  fp_log install "openssl missing — apt install"
+  if command -v apt-get >/dev/null 2>&1; then
+    _fp_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -y >> "$FP_LOG_INSTALL" 2>&1 || true
+    if _fp_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y openssl >> "$FP_LOG_INSTALL" 2>&1; then
+      ok "openssl installé"
+      return 0
+    fi
+  elif command -v dnf >/dev/null 2>&1; then
+    _fp_sudo dnf install -y openssl >> "$FP_LOG_INSTALL" 2>&1 && ok "openssl installé" && return 0
+  fi
+  err "openssl requis — installer manuellement (apt install openssl)"
+  return 1
+}
+
+_fp_bootstrap_env_file() {
+  local root="${DIR:-.}" created=0
+  if [ -f "$root/.env" ]; then
+    ok ".env présent"
+    return 0
+  fi
+  if [ ! -f "$root/.env.example" ]; then
+    err ".env absent et .env.example introuvable"
+    return 1
+  fi
+  cp "$root/.env.example" "$root/.env"
+  created=1
+  ok ".env créé depuis .env.example"
+  fp_log install ".env created from .env.example"
+
+  if [ "$created" -eq 1 ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$root/.env" <<'PY' || warn "Remplissage secrets partiel"
+import re, secrets, uuid, base64, sys, pathlib
+path = pathlib.Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+secret_suffixes = ("PASSWORD", "PASS", "SECRET", "TOKEN", "KEY")
+skip = {"CONNECTOR_", "CYBER_MONITOR_", "CISA_", "SEKOIA_BASE", "MISP_PUBLIC", "GRAFANA_ROOT", "GRAFANA_DOMAIN", "GRAFANA_ALLOWED", "GRAFANA_CSRF", "GRAFANA_CORS", "OPENCTI_TI_MASSIVE", "UPLOAD_", "CERT_PORTAL"}
+def gen(k: str) -> str:
+    if k == "OPENCTI_ENCRYPTION_KEY":
+        return base64.b64encode(secrets.token_bytes(32)).decode()
+    if "TOKEN" in k or k.endswith("_ID") and "CONNECTOR" not in k:
+        return str(uuid.uuid4())
+    return f"Fp_{secrets.token_urlsafe(12)}"
+out = []
+for line in lines:
+    m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
+    if not m:
+        out.append(line); continue
+    k, v = m.group(1), m.group(2).strip().strip('"').strip("'")
+    if any(k.startswith(p) for p in skip):
+        out.append(line); continue
+    if any(s in k for s in secret_suffixes) and v == "":
+        out.append(f"{k}={gen(k)}")
+    else:
+        out.append(line)
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
+    ok "Secrets vides initialisés dans .env (machine vierge)"
+  fi
+  return 0
+}
+
+_fp_bootstrap_cert_dirs() {
+  local root="${DIR:-.}" d
+  local dirs=(
+    nginx/certs/server
+    nginx/certs/ca
+    config/nginx/ssl
+    portal-cert/certs
+    portal-it/certs
+    helk/certs
+    velociraptor/certs
+    logs
+  )
+  for d in "${dirs[@]}"; do
+    mkdir -p "$root/$d"
+  done
+  ok "Dossiers persistants / certs créés (${#dirs[@]})"
+}
+
+_fp_bootstrap_generate_tls() {
+  local root="${DIR:-.}" ip rc=0
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+
+  if [ ! -f "$root/nginx/certs/ca/ca.crt" ] || [ ! -f "$root/nginx/certs/ca/ca.key" ]; then
+    info "Génération CA interne (openssl)..."
+    bash "$root/scripts/generate_ca.sh" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
+  fi
+
+  if [ ! -f "$root/nginx/certs/server/server.crt" ] || [ ! -f "$root/nginx/certs/server/server.key" ]; then
+    info "Génération certificat serveur Nginx (SAN IP=$ip)..."
+    bash "$root/scripts/generate_server_cert.sh" "$ip" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
+  fi
+
+  if [ ! -f "$root/config/nginx/ssl/forensic.crt" ] || [ ! -f "$root/config/nginx/ssl/forensic.key" ]; then
+    info "Génération certificat SSL portails (config/nginx/ssl)..."
+    bash "$root/scripts/generate-ssl-cert.sh" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
+  fi
+
+  [ "$rc" -eq 0 ] && ok "Certificats TLS générés/vérifiés" || warn "Génération TLS partielle — voir logs/forensic_install.log"
+  return "$rc"
+}
+
+_fp_bootstrap_sync_cert_links() {
+  local root="${DIR:-.}" sub d
+  local subs=(portal-cert/certs portal-it/certs helk/certs velociraptor/certs)
+  for sub in "${subs[@]}"; do
+    d="$root/$sub"
+    mkdir -p "$d"
+    ln -sf "../../nginx/certs/ca/ca.crt" "$d/ca.crt"
+    ln -sf "../../nginx/certs/server/server.crt" "$d/server.crt"
+    ln -sf "../../nginx/certs/server/server.key" "$d/server.key"
+    ln -sf "../../config/nginx/ssl/forensic.crt" "$d/forensic.crt"
+    ln -sf "../../config/nginx/ssl/forensic.key" "$d/forensic.key"
+  done
+  ok "Certificats synchronisés → portails / HELK / Velociraptor"
+}
+
+_fp_bootstrap_cert_permissions() {
+  local root="${DIR:-.}"
+  find "$root/nginx/certs" "$root/config/nginx/ssl" \
+    "$root/portal-cert/certs" "$root/portal-it/certs" \
+    "$root/helk/certs" "$root/velociraptor/certs" \
+    -type f -name '*.key' 2>/dev/null | while read -r f; do chmod 600 "$f" 2>/dev/null || true; done
+  find "$root/nginx/certs" "$root/config/nginx/ssl" \
+    -type f -name '*.crt' 2>/dev/null | while read -r f; do chmod 644 "$f" 2>/dev/null || true; done
+  [ -f "$root/nginx/certs/ca/ca.key" ] && chmod 600 "$root/nginx/certs/ca/ca.key" 2>/dev/null || true
+  ok "Permissions TLS: *.key=600 · *.crt=644"
+}
+
+_fp_bootstrap_verify_nginx_tls() {
+  local root="${DIR:-.}" missing=() f
+  local required=(
+    nginx/certs/server/server.crt
+    nginx/certs/server/server.key
+    nginx/certs/ca/ca.crt
+    config/nginx/ssl/forensic.crt
+    config/nginx/ssl/forensic.key
+  )
+  for f in "${required[@]}"; do
+    [ -f "$root/$f" ] || missing+=("$f")
+  done
+
+  if [ -f "$root/config/nginx/conf.d/forensic.conf" ]; then
+    if grep -q 'ssl_certificate[[:space:]]\+/etc/nginx/certs/server/server.crt' \
+      "$root/config/nginx/conf.d/forensic.conf" 2>/dev/null; then
+      ok "nginx/conf.d/forensic.conf → chemins TLS cohérents (/etc/nginx/certs/server/*)"
+    else
+      warn "nginx/conf.d/forensic.conf — vérifier ssl_certificate / ssl_certificate_key"
+    fi
+  else
+    missing+=("config/nginx/conf.d/forensic.conf")
+  fi
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    err "Certificats TLS manquants pour Nginx / portails :"
+    printf '    • %s\n' "${missing[@]}"
+    err "Relancer : ./forensic.sh -full-start  ou  ./forensic.sh tls"
+    return 1
+  fi
+  ok "Validation TLS Nginx — tous les fichiers requis présents"
+  return 0
+}
+
+# Point d'entrée phase 0 — machine vierge (sans .env, sans certs, sans openssl)
+fp_bootstrap_fresh_machine() {
+  local _had_e=0
+  case $- in *e*) _had_e=1;; esac
+  set +e
+  step "ORCHESTRATEUR PHASE 0 — Bootstrap machine vierge"
+  fp_log_init
+  fp_log install "=== fp_bootstrap_fresh_machine ==="
+
+  _fp_bootstrap_ensure_openssl || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
+  _fp_bootstrap_env_file || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
+  _fp_bootstrap_cert_dirs
+  _fp_bootstrap_generate_tls || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
+  _fp_bootstrap_sync_cert_links
+  _fp_bootstrap_cert_permissions
+  _fp_bootstrap_verify_nginx_tls || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
+
+  export FP_TLS_NO_DOCKER=1
+  fp_log install "bootstrap fresh machine OK"
+  ok "Bootstrap machine vierge terminé (.env + TLS + dossiers)"
   [ "$_had_e" -eq 1 ] && set -e
   return 0
 }

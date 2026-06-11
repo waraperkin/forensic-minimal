@@ -44,8 +44,13 @@ setup_tls() {
     echo "[TLS] CA interne déjà présente."
   fi
 
-  echo "[TLS] Génération du certificat serveur pour $IP..."
-  bash "$DIR/scripts/generate_server_cert.sh" "$IP"
+  if [ ! -f "$DIR/nginx/certs/server/server.crt" ] \
+    || [ ! -f "$DIR/nginx/certs/server/server.key" ]; then
+    echo "[TLS] Certificat serveur absent — génération pour $IP..."
+    bash "$DIR/scripts/generate_server_cert.sh" "$IP"
+  else
+    echo "[TLS] Certificat serveur déjà présent."
+  fi
 
   echo "[TLS] Mise à jour des config.json avec soc_base_url=https://$IP"
   _tls_update_config_json() {
@@ -82,6 +87,12 @@ PY
   fi
 
   echo "[TLS] Redémarrage Nginx + portails CERT/IT..."
+  if [ "${FP_TLS_NO_DOCKER:-0}" = "1" ] \
+    || ! command -v docker >/dev/null 2>&1 \
+    || ! docker ps >/dev/null 2>&1; then
+    echo "[TLS] Docker indisponible — certificats prêts, reload Nginx différé (full-start)."
+    return 0
+  fi
   if [ "${FP_TLS_BUILD:-}" = "1" ]; then
     docker compose up -d --build nginx cert-portal it-portal
   else
@@ -961,6 +972,17 @@ full_start_orchestrator() {
   info "║  Install · Build · Start · Test · Rapport                    ║"
   info "╚══════════════════════════════════════════════════════════════╝"
   echo ""
+
+  if command -v fp_bootstrap_fresh_machine >/dev/null 2>&1; then
+    if ! fp_bootstrap_fresh_machine; then
+      err "Bootstrap machine vierge échoué — corriger puis relancer ./forensic.sh -full-start"
+      command -v fp_full_start_final_report >/dev/null 2>&1 && fp_full_start_final_report 1
+      [ "$_e" -eq 1 ] && set -e
+      return 1
+    fi
+  else
+    warn "fp_bootstrap_fresh_machine indisponible (installer.sh)"
+  fi
 
   command -v fp_verify_system >/dev/null 2>&1 && fp_verify_system || warn "fp_verify_system indisponible"
 
@@ -3120,7 +3142,7 @@ case "${1:-help}" in
     echo -e "${CYAN}Forensic Platform v2.1${NC}"
     echo ""
     echo "  start | all       ⚡ FAST-BOOT — deps + réseau + up (--no-build --pull never) + status"
-    echo "  -full-start       🚀 ORCHESTRATEUR — install + build + start + test + rapport (machine vierge)"
+    echo "  -full-start       🚀 ORCHESTRATEUR — bootstrap vierge + install + build + test + rapport"
     echo "  full-start | full 🏗️  alias -full-start (orchestrateur complet)"
     echo "  rebuild           🏗️  alias -full-start (orchestrateur complet)"
     echo "  install           PHASE 0 — Pré-installation packages + sysctl + groupe docker"
