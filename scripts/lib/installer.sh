@@ -661,9 +661,10 @@ fp_network_repair() {
   if [ "${FP_NET_FORCE_MIGRATE:-0}" = "1" ]; then
     warn "FP_NET_FORCE_MIGRATE=1 — migration forcée vers fallback subnet"
     _fp_net_force_remove "$FP_NET_NAME"
-    _fp_net_try_fallback "$target_subnet"
+    local _fb_rc=0
+    _fp_net_try_fallback "$target_subnet" || _fb_rc=$?
     [ "$_had_e" -eq 1 ] && set -e
-    return $?
+    return "$_fb_rc"
   fi
 
   # 4) Vérifier si le subnet cible est libre (hors réseau FP existant)
@@ -671,9 +672,10 @@ fp_network_repair() {
     warn "Subnet $target_subnet bloqué par un autre réseau Docker"
     _fp_net_log "conflit subnet $target_subnet — tentative fallback"
     _fp_net_force_remove "$FP_NET_NAME"
-    _fp_net_try_fallback "$target_subnet"
+    local _fb_rc=0
+    _fp_net_try_fallback "$target_subnet" || _fb_rc=$?
     [ "$_had_e" -eq 1 ] && set -e
-    return $?
+    return "$_fb_rc"
   fi
 
   # 5) Le subnet cible est libre. Si le réseau existe avec un mauvais subnet → recréer.
@@ -1506,6 +1508,15 @@ CRITICAL = [
     "CERT_PORTAL_SECRET", "IT_PORTAL_SECRET", "PORTAINER_ADMIN_PASSWORD",
 ]
 
+# Connecteurs OpenCTI internes (docker-compose.opencti.yml) — UUID requis même si vides dans l'exemple
+OPENCTI_CONNECTOR_IDS = [
+    "CONNECTOR_EXPORT_FILE_STIX_ID", "CONNECTOR_EXPORT_FILE_CSV_ID",
+    "CONNECTOR_EXPORT_FILE_TXT_ID", "CONNECTOR_IMPORT_FILE_STIX_ID",
+    "CONNECTOR_IMPORT_DOCUMENT_ID", "CONNECTOR_DNS_TWIST_ID",
+    "CONNECTOR_EXPORT_REPORT_PDF_ID", "CONNECTOR_MITRE_ID",
+    "CONNECTOR_CVE_ID", "CONNECTOR_OPENCTI_DATASETS_ID",
+]
+
 OPTIONAL_EMPTY_PREFIXES = (
     "ALIENVAULT_", "ABUSEIPDB_", "SHODAN_", "IPINFO_", "CYBER_MONITOR_",
     "SEKOIA_API_", "SEKOIA_UI_", "S1_API_", "CISA_KEV_", "CONNECTOR_THREATFOX",
@@ -1557,6 +1568,10 @@ for k in list(existing.keys()) + list(CRITICAL):
         existing[k] = gen_secret(k)
     elif k in DEFAULTS:
         existing[k] = DEFAULTS[k]
+
+for k in OPENCTI_CONNECTOR_IDS:
+    if k not in existing or existing[k] == "":
+        existing[k] = str(uuid.uuid4())
 
 # Clés critiques absentes du fichier
 for k in CRITICAL:

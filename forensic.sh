@@ -1192,6 +1192,9 @@ full_start() {
     bash "$DIR/scripts/helk_velociraptor_master_setup.sh" 2>&1 \
       | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" || warn "HELK/VR setup partiel"
   fi
+  # Nginx résout velociraptor-bridge / helk-bridge au démarrage — les lancer avant nginx
+  # même si le setup HELK/VR sidecar a échoué partiellement (ex. port Kafka occupé).
+  $UP helk-bridge velociraptor-bridge 2>/dev/null || true
   $UP nginx
 
   START_OK+=("Services Docker (8 phases stack)")

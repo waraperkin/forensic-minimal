@@ -31,7 +31,8 @@ PUBLIC_HOST="$PUBLIC_HOST" bash scripts/generate-config.sh
 
 step "Stack HELK sidecar (ES + Kibana + Logstash + Kafka/ZK)"
 cd "$HELK_ROOT"
-docker compose -f docker-compose.helk.yml -f docker-compose.external-net.yml up -d
+docker compose -f docker-compose.helk.yml -f docker-compose.external-net.yml up -d \
+  || warn "HELK sidecar partiel (Kafka/port — ES/Kibana peuvent suffire)"
 for i in $(seq 1 60); do
   curl -sf http://127.0.0.1:19200/_cluster/health >/dev/null 2>&1 && break
   sleep 3
