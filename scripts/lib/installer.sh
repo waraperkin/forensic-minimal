@@ -1436,61 +1436,51 @@ _fp_bootstrap_ensure_openssl() {
 }
 
 _fp_bootstrap_env_file() {
-  local root="${DIR:-.}" created=0
-  if [ -f "$root/.env" ]; then
+  local root="${DIR:-.}"
+  if [ ! -f "$root/.env" ]; then
+    if [ ! -f "$root/.env.example" ]; then
+      err ".env absent et .env.example introuvable"
+      return 1
+    fi
+    cp "$root/.env.example" "$root/.env"
+    ok ".env créé depuis .env.example"
+    fp_log install ".env created from .env.example"
+  else
     ok ".env présent"
-    return 0
   fi
-  if [ ! -f "$root/.env.example" ]; then
-    err ".env absent et .env.example introuvable"
-    return 1
-  fi
-  cp "$root/.env.example" "$root/.env"
-  created=1
-  ok ".env créé depuis .env.example"
-  fp_log install ".env created from .env.example"
-
-  if [ "$created" -eq 1 ] && command -v python3 >/dev/null 2>&1; then
-    python3 - "$root/.env" <<'PY' || warn "Remplissage secrets partiel"
-import re, secrets, uuid, base64, sys, pathlib
-path = pathlib.Path(sys.argv[1])
-lines = path.read_text(encoding="utf-8").splitlines()
-secret_suffixes = ("PASSWORD", "PASS", "SECRET", "TOKEN", "KEY")
-skip = {"CONNECTOR_", "CYBER_MONITOR_", "CISA_", "SEKOIA_BASE", "MISP_PUBLIC", "GRAFANA_ROOT", "GRAFANA_DOMAIN", "GRAFANA_ALLOWED", "GRAFANA_CSRF", "GRAFANA_CORS", "OPENCTI_TI_MASSIVE", "UPLOAD_", "CERT_PORTAL"}
-def gen(k: str) -> str:
-    if k == "OPENCTI_ENCRYPTION_KEY":
-        return base64.b64encode(secrets.token_bytes(32)).decode()
-    if "TOKEN" in k or k.endswith("_ID") and "CONNECTOR" not in k:
-        return str(uuid.uuid4())
-    return f"Fp_{secrets.token_urlsafe(12)}"
-out = []
-for line in lines:
-    m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
-    if not m:
-        out.append(line); continue
-    k, v = m.group(1), m.group(2).strip().strip('"').strip("'")
-    if any(k.startswith(p) for p in skip):
-        out.append(line); continue
-    if any(s in k for s in secret_suffixes) and v == "":
-        out.append(f"{k}={gen(k)}")
-    else:
-        out.append(line)
-path.write_text("\n".join(out) + "\n", encoding="utf-8")
-PY
-    ok "Secrets vides initialisés dans .env (machine vierge)"
-  fi
+  _fp_bootstrap_env_complete || return 1
   return 0
 }
 
-_fp_bootstrap_patch_env_host() {
-  local root="${DIR:-.}" ip
+# Remplit TOUTES les variables critiques vides + valide qu'aucune n'est vide.
+_fp_bootstrap_env_complete() {
+  local root="${DIR:-.}" ip rc=0
   ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
-  [ -f "$root/.env" ] || return 0
-  python3 - "$root/.env" "$ip" <<'PY' || warn "Patch .env host partiel"
-import pathlib, re, secrets, sys
-path, ip = pathlib.Path(sys.argv[1]), sys.argv[2]
+  [ -f "$root/.env" ] || { err ".env introuvable"; return 1; }
+  if ! command -v python3 >/dev/null 2>&1; then
+    err "python3 requis pour le bootstrap .env"
+    return 1
+  fi
+  python3 - "$root/.env" "$ip" <<'PY'
+import re, secrets, uuid, base64, sys, pathlib
+path = pathlib.Path(sys.argv[1])
+ip = sys.argv[2]
 lines = path.read_text(encoding="utf-8").splitlines()
-keys = {
+
+DEFAULTS = {
+    "POSTGRES_USER": "forensic",
+    "POSTGRES_DB": "forensic",
+    "MINIO_ROOT_USER": "forensicadmin",
+    "MYSQL_DATABASE": "misp",
+    "MYSQL_USER": "misp",
+    "TIMESKETCH_USER": "admin",
+    "RABBITMQ_DEFAULT_USER": "opencti",
+    "RABBITMQ_DEFAULT_VHOST": "opencti",
+    "OPENCTI_ADMIN_EMAIL": "admin@forensic.local",
+    "MISP_ADMIN_EMAIL": "admin@forensic.local",
+    "THEHIVE_ADMIN_LOGIN": "admin",
+    "VELOCIRAPTOR_ADMIN_USER": "admin",
+    "VELOCIRAPTOR_ADMIN_PASSWORD": "F0r3ns1c_VR_2024!",
     "PUBLIC_HOST": ip,
     "TIMESKETCH_EXTERNAL_URL": f"https://{ip}/timesketch",
     "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp/",
@@ -1500,33 +1490,148 @@ keys = {
     "GRAFANA_CSRF_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
     "GRAFANA_CORS_ORIGIN": f"https://{ip},http://{ip},https://localhost,http://localhost",
 }
-present = set()
-out = []
+
+CRITICAL = [
+    "POSTGRES_PASSWORD", "REDIS_PASSWORD",
+    "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
+    "TIMESKETCH_PASSWORD", "TIMESKETCH_SECRET_KEY",
+    "OPENCTI_ADMIN_PASSWORD", "OPENCTI_ADMIN_TOKEN", "OPENCTI_ENCRYPTION_KEY",
+    "OPENCTI_HEALTHCHECK_ACCESS_KEY",
+    "RABBITMQ_DEFAULT_PASS",
+    "MISP_ADMIN_PASSWORD", "MISP_ADMIN_API_KEY", "MISP_ENCRYPTION_KEY",
+    "MYSQL_ROOT_PASSWORD", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD",
+    "GRAFANA_ADMIN_PASSWORD",
+    "THEHIVE_SECRET", "THEHIVE_ADMIN_PASSWORD", "THEHIVE_API_KEY",
+    "CORTEX_SECRET", "CORTEX_ADMIN_PASSWORD", "CORTEX_API_KEY",
+    "CERT_PORTAL_SECRET", "IT_PORTAL_SECRET", "PORTAINER_ADMIN_PASSWORD",
+]
+
+OPTIONAL_EMPTY_PREFIXES = (
+    "ALIENVAULT_", "ABUSEIPDB_", "SHODAN_", "IPINFO_", "CYBER_MONITOR_",
+    "SEKOIA_API_", "SEKOIA_UI_", "S1_API_", "CISA_KEV_", "CONNECTOR_THREATFOX",
+    "CONNECTOR_ABUSE_SSL", "CONNECTOR_MITRE_ATLAS", "CONNECTOR_DISARM",
+)
+
+def gen_secret(k: str) -> str:
+    if k == "OPENCTI_ENCRYPTION_KEY":
+        return base64.b64encode(secrets.token_bytes(32)).decode()
+    if k == "MISP_ENCRYPTION_KEY":
+        return secrets.token_hex(16)
+    if k.endswith("_ID") or "TOKEN" in k:
+        return str(uuid.uuid4())
+    if k in ("CORTEX_SECRET", "THEHIVE_API_KEY", "CORTEX_API_KEY"):
+        return secrets.token_hex(16 if "API" in k else 32)
+    return f"Fp_{secrets.token_urlsafe(12)}"
+
+def is_optional(k: str) -> bool:
+    return any(k.startswith(p) for p in OPTIONAL_EMPTY_PREFIXES)
+
+def parse_val(v: str) -> str:
+    v = v.strip().strip('"').strip("'")
+    return v
+
+existing = {}
+order = []
 for line in lines:
     m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
-    if m and m.group(1) in keys:
-        out.append(f"{m.group(1)}={keys[m.group(1)]}")
-        present.add(m.group(1))
+    if m:
+        existing[m.group(1)] = parse_val(m.group(2))
+    order.append(line)
+
+# Appliquer defaults + génération secrets pour valeurs vides
+for k, dv in DEFAULTS.items():
+    if k not in existing or existing[k] == "":
+        existing[k] = dv
+
+for k in list(existing.keys()) + list(CRITICAL):
+    if k not in existing:
+        existing[k] = ""
+    if existing[k] != "":
+        continue
+    if is_optional(k):
+        continue
+    if k.endswith("_ID") and k.startswith("CONNECTOR_"):
+        existing[k] = str(uuid.uuid4())
+        continue
+    if any(s in k for s in ("PASSWORD", "PASS", "SECRET", "TOKEN", "KEY")):
+        existing[k] = gen_secret(k)
+    elif k in DEFAULTS:
+        existing[k] = DEFAULTS[k]
+
+# Clés critiques absentes du fichier
+for k in CRITICAL:
+    if k not in existing or existing[k] == "":
+        if not is_optional(k):
+            existing[k] = gen_secret(k)
+
+missing = [k for k in CRITICAL if not existing.get(k)]
+if missing:
+    print("CRITICAL_MISSING:" + ",".join(missing), file=sys.stderr)
+    sys.exit(1)
+
+# Réécrire .env (conserver commentaires, mettre à jour les clés connues)
+out = []
+seen = set()
+for line in lines:
+    m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
+    if m and m.group(1) in existing:
+        k = m.group(1)
+        out.append(f"{k}={existing[k]}")
+        seen.add(k)
     else:
         out.append(line)
-extra = {
-    "THEHIVE_SECRET": f"Fp_{secrets.token_urlsafe(16)}",
-    "THEHIVE_ADMIN_LOGIN": "admin",
-    "THEHIVE_ADMIN_PASSWORD": f"Fp_{secrets.token_urlsafe(12)}",
-    "THEHIVE_API_KEY": secrets.token_hex(16),
-    "CORTEX_SECRET": secrets.token_hex(32),
-    "CORTEX_ADMIN_PASSWORD": f"Fp_{secrets.token_urlsafe(12)}",
-    "CORTEX_API_KEY": secrets.token_hex(16),
-}
-for k, v in keys.items():
-    if k not in present:
-        out.append(f"{k}={v}")
-for k, v in extra.items():
-    if k not in present and not any(re.match(rf'^{re.escape(k)}=', l) for l in lines):
+for k, v in sorted(existing.items()):
+    if k not in seen:
         out.append(f"{k}={v}")
 path.write_text("\n".join(out) + "\n", encoding="utf-8")
+print(f"OK vars={len(existing)} critical={len(CRITICAL)}")
 PY
-  ok "Variables .env alignées sur IP=$ip (+ secrets TheHive/Cortex si absents)"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    err "Variables .env critiques manquantes — bootstrap arrêté"
+    fp_log install ".env validation FAIL"
+    return 1
+  fi
+  ok "Variables .env complètes et validées (secrets + MySQL/MISP/MinIO/portails)"
+  fp_log install ".env complete OK ip=$ip"
+  return 0
+}
+
+_fp_bootstrap_patch_env_host() {
+  # Conservé pour compatibilité — le patch IP est intégré à _fp_bootstrap_env_complete.
+  :
+}
+
+_fp_bootstrap_apt_extras() {
+  local pkgs=() p
+  for p in python3-yaml; do
+    dpkg -s "$p" >/dev/null 2>&1 || pkgs+=("$p")
+  done
+  [ "${#pkgs[@]}" -eq 0 ] && { ok "Packages extras présents (python3-yaml)"; return 0; }
+  warn "Installation packages extras: ${pkgs[*]}"
+  if command -v apt-get >/dev/null 2>&1; then
+    _fp_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}" >> "$FP_LOG_INSTALL" 2>&1 \
+      && ok "Packages extras installés" || warn "Installation python3-yaml partielle"
+  else
+    warn "apt-get absent — installer python3-yaml manuellement (Velociraptor config)"
+  fi
+  return 0
+}
+
+_fp_bootstrap_external_networks() {
+  local docker_bin="${FP_DOCKER:-docker}"
+  local nets=(helk_net:172.30.0.0/24 velociraptor_net:172.31.0.0/24) entry name cidr
+  for entry in "${nets[@]}"; do
+    name="${entry%%:*}"; cidr="${entry#*:}"
+    if $docker_bin network inspect "$name" >/dev/null 2>&1; then
+      ok "Réseau $name déjà présent"
+    elif $docker_bin network create --driver bridge --subnet "$cidr" "$name" >> "$FP_LOG_INSTALL" 2>&1; then
+      ok "Réseau $name créé ($cidr)"
+    else
+      warn "Création réseau $name échouée (peut exister avec autre subnet)"
+    fi
+  done
+  return 0
 }
 
 _fp_bootstrap_generate_configs() {
@@ -1673,6 +1778,7 @@ fp_bootstrap_fresh_machine() {
   fp_log install "=== fp_bootstrap_fresh_machine ==="
 
   _fp_bootstrap_ensure_openssl || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
+  _fp_bootstrap_apt_extras || true
   _fp_bootstrap_env_file || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
   _fp_bootstrap_patch_env_host
   _fp_bootstrap_cert_dirs
@@ -1681,6 +1787,10 @@ fp_bootstrap_fresh_machine() {
   _fp_bootstrap_cert_permissions
   _fp_bootstrap_verify_nginx_tls || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
   _fp_bootstrap_generate_configs
+  if command -v docker >/dev/null 2>&1; then
+    fp_ensure_docker >/dev/null 2>&1 || true
+    _fp_bootstrap_external_networks || warn "Réseaux externes partiels (helk_net / velociraptor_net)"
+  fi
 
   export FP_TLS_NO_DOCKER=1
   fp_log install "bootstrap fresh machine OK"
