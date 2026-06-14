@@ -766,8 +766,14 @@ fp_disk_guard() {
   if [ "$usepct" -ge "$threshold" ]; then
     warn "Disque critique (${usepct}% ≥ ${threshold}%) — purge cache Docker récupérable (non destructif)"
     local docker_bin="${FP_DOCKER:-docker}"
-    $docker_bin builder prune -af >/dev/null 2>&1 || true
-    $docker_bin image prune -f   >/dev/null 2>&1 || true
+    info "Purge Docker en cours (1–15 min selon le cache)..."
+    if command -v timeout >/dev/null 2>&1; then
+      timeout "${FP_DOCKER_PRUNE_TIMEOUT:-900}" $docker_bin builder prune -af >> "${FP_LOG_START:-$DIR/logs/forensic_start.log}" 2>&1 \
+        || warn "Purge builder Docker timeout/partielle (continuer)"
+    else
+      $docker_bin builder prune -af >> "${FP_LOG_START:-$DIR/logs/forensic_start.log}" 2>&1 || true
+    fi
+    $docker_bin image prune -f >> "${FP_LOG_START:-$DIR/logs/forensic_start.log}" 2>&1 || true
     usepct=$(df -P "$DIR" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')
     ok "Disque après purge: ${usepct}% utilisé"
   fi
@@ -982,6 +988,17 @@ full_start_orchestrator() {
     fi
   else
     warn "fp_bootstrap_fresh_machine indisponible (installer.sh)"
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null \
+    | grep -qE '^forensic-'; then
+    local other_proj
+    other_proj=$(docker ps --filter "name=forensic-nginx" --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null | head -1)
+    if [ -n "$other_proj" ] && [ "$other_proj" != "$(basename "$DIR")" ]; then
+      warn "Stack forensic déjà active (projet Docker: $other_proj) — ports 80/443/9200… occupés"
+      warn "  Sur machine vierge : OK. Ici : arrêter l'autre stack → cd ../$other_proj && ./forensic.sh full-stop"
+      _fp_orch_note "Conflit ports: projet $other_proj actif"
+    fi
   fi
 
   command -v fp_verify_system >/dev/null 2>&1 && fp_verify_system || warn "fp_verify_system indisponible"

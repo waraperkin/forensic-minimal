@@ -537,14 +537,14 @@ _fp_net_subnet_free() {
     if [ "$cnt" = "0" ]; then
       _fp_net_log "subnet $subnet occupé par réseau vide '$name' → suppression"
       if _fp_docker network rm "$name" >/dev/null 2>&1; then
-        info "Réseau orphelin '$name' supprimé (subnet $subnet libéré)"
+        info "Réseau orphelin '$name' supprimé (subnet $subnet libéré)" >&2
       else
-        warn "Impossible de supprimer '$name' (subnet $subnet)"
+        warn "Impossible de supprimer '$name' (subnet $subnet)" >&2
         _fp_net_log "rm $name ÉCHEC"
         return 1
       fi
     else
-      warn "Subnet $subnet occupé par '$name' ($cnt container(s) actifs)"
+      warn "Subnet $subnet occupé par '$name' ($cnt container(s) actifs)" >&2
       _fp_net_log "subnet $subnet bloqué par $name ($cnt containers)"
       return 1
     fi
@@ -1482,16 +1482,95 @@ PY
   return 0
 }
 
+_fp_bootstrap_patch_env_host() {
+  local root="${DIR:-.}" ip
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  [ -f "$root/.env" ] || return 0
+  python3 - "$root/.env" "$ip" <<'PY' || warn "Patch .env host partiel"
+import pathlib, re, secrets, sys
+path, ip = pathlib.Path(sys.argv[1]), sys.argv[2]
+lines = path.read_text(encoding="utf-8").splitlines()
+keys = {
+    "PUBLIC_HOST": ip,
+    "TIMESKETCH_EXTERNAL_URL": f"https://{ip}/timesketch",
+    "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp/",
+    "GRAFANA_ROOT_URL": f"https://{ip}/grafana/",
+    "GRAFANA_DOMAIN": ip,
+    "GRAFANA_ALLOWED_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
+    "GRAFANA_CSRF_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
+    "GRAFANA_CORS_ORIGIN": f"https://{ip},http://{ip},https://localhost,http://localhost",
+}
+present = set()
+out = []
+for line in lines:
+    m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
+    if m and m.group(1) in keys:
+        out.append(f"{m.group(1)}={keys[m.group(1)]}")
+        present.add(m.group(1))
+    else:
+        out.append(line)
+extra = {
+    "THEHIVE_SECRET": f"Fp_{secrets.token_urlsafe(16)}",
+    "THEHIVE_ADMIN_LOGIN": "admin",
+    "THEHIVE_ADMIN_PASSWORD": f"Fp_{secrets.token_urlsafe(12)}",
+    "THEHIVE_API_KEY": secrets.token_hex(16),
+    "CORTEX_SECRET": secrets.token_hex(32),
+    "CORTEX_ADMIN_PASSWORD": f"Fp_{secrets.token_urlsafe(12)}",
+    "CORTEX_API_KEY": secrets.token_hex(16),
+}
+for k, v in keys.items():
+    if k not in present:
+        out.append(f"{k}={v}")
+for k, v in extra.items():
+    if k not in present and not any(re.match(rf'^{re.escape(k)}=', l) for l in lines):
+        out.append(f"{k}={v}")
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
+  ok "Variables .env alignées sur IP=$ip (+ secrets TheHive/Cortex si absents)"
+}
+
+_fp_bootstrap_generate_configs() {
+  local root="${DIR:-.}" ip cfg
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  if [ -x "$root/scripts/generate-timesketch-conf.sh" ]; then
+    bash "$root/scripts/generate-timesketch-conf.sh" >> "$FP_LOG_INSTALL" 2>&1 \
+      && ok "timesketch.conf généré" \
+      || warn "timesketch.conf — voir logs/forensic_install.log"
+  fi
+  for cfg in "$root/portal-cert/public/config.json" "$root/portal-it/public/config.json"; do
+    [ -f "$cfg" ] || continue
+    if command -v jq >/dev/null 2>&1; then
+      jq --arg url "https://${ip}" '.soc_base_url = $url' "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+    else
+      python3 - "$cfg" "$ip" <<'PY'
+import json, sys
+p, ip = sys.argv[1], sys.argv[2]
+with open(p, encoding="utf-8") as f: d = json.load(f)
+d["soc_base_url"] = f"https://{ip}"
+with open(p, "w", encoding="utf-8") as f:
+    json.dump(d, f, indent=2); f.write("\n")
+PY
+    fi
+  done
+  if [ -f "$root/config/nginx/conf.d/forensic.conf" ]; then
+    sed -i "s/server_name .*/server_name ${ip};/" "$root/config/nginx/conf.d/forensic.conf" 2>/dev/null || true
+  fi
+  ok "Portails config.json + nginx server_name → $ip"
+}
+
 _fp_bootstrap_cert_dirs() {
   local root="${DIR:-.}" d
   local dirs=(
     nginx/certs/server
     nginx/certs/ca
     config/nginx/ssl
+    config/timesketch
     portal-cert/certs
     portal-it/certs
     helk/certs
     velociraptor/certs
+    velociraptor/data
+    velociraptor/lab-collections
     logs
   )
   for d in "${dirs[@]}"; do
@@ -1595,11 +1674,13 @@ fp_bootstrap_fresh_machine() {
 
   _fp_bootstrap_ensure_openssl || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
   _fp_bootstrap_env_file || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
+  _fp_bootstrap_patch_env_host
   _fp_bootstrap_cert_dirs
   _fp_bootstrap_generate_tls || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
   _fp_bootstrap_sync_cert_links
   _fp_bootstrap_cert_permissions
   _fp_bootstrap_verify_nginx_tls || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
+  _fp_bootstrap_generate_configs
 
   export FP_TLS_NO_DOCKER=1
   fp_log install "bootstrap fresh machine OK"

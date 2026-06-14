@@ -17,7 +17,7 @@ if [ -f "$CERT" ] && [ -f "$KEY" ]; then
   # Vérifier si le cert est encore valide (> 30 jours)
   if openssl x509 -checkend 2592000 -noout -in "$CERT" 2>/dev/null; then
     echo "[ssl] Certificat existant valide — conservation"
-    return 0 2>/dev/null || true
+    exit 0
   fi
   echo "[ssl] Certificat expiré — régénération"
 fi
