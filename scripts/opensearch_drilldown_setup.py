@@ -15,8 +15,10 @@ import requests
 
 ROOT = Path(__file__).resolve().parent.parent
 OSD = os.environ.get("OSD_URL", "http://localhost:5601/dashboards").rstrip("/")
+OSD_NGINX = os.environ.get("OSD_NGINX_URL", "https://localhost/dashboards").rstrip("/")
 
 sys.path.insert(0, str(ROOT / "scripts"))
+from fp_http_lib import request_retry, wait_osd  # noqa: E402
 from osd_drilldown_lib import (  # noqa: E402
     FP_DASHBOARDS,
     SAMPLE_VIZ_UUID_DRILL,
@@ -49,7 +51,7 @@ def upsert_search(s: requests.Session, sid: str, title: str, idx: str, q: str, c
             f"{OSD}/api/saved_objects/search/{sid}",
             headers=hdrs(),
             json={"attributes": attrs, "references": refs},
-            timeout=25,
+            timeout=60,
             verify=False,
         )
         if r.status_code in (200, 201):
@@ -58,7 +60,7 @@ def upsert_search(s: requests.Session, sid: str, title: str, idx: str, q: str, c
 
 
 def enrich_visualization(s: requests.Session, vid: str) -> bool:
-    r = s.get(f"{OSD}/api/saved_objects/visualization/{vid}", headers=hdrs(), timeout=20, verify=False)
+    r = s.get(f"{OSD}/api/saved_objects/visualization/{vid}", headers=hdrs(), timeout=60, verify=False)
     if r.status_code != 200:
         return False
     body = r.json()
@@ -201,6 +203,8 @@ def run_imports() -> int:
         "opensearch_dashboards_import_fp.sh",
         "opensearch_dashboards_import_ti.sh",
         "opensearch_dashboards_import_obs.sh",
+        "opensearch_dashboards_import_enterprise.sh",
+        "opensearch_dashboards_import_playbook.sh",
     ]
     for sh in imports:
         path = ROOT / "scripts" / sh
@@ -216,10 +220,17 @@ def run_imports() -> int:
 
 
 def main() -> int:
-    fails = run_imports()
-
+    global OSD
     s = requests.Session()
     s.verify = False
+    base = wait_osd(s, [OSD, OSD_NGINX], timeout_total=300)
+    if not base:
+        ko("OpenSearch Dashboards inaccessible — abandon drilldown")
+        return 1
+    OSD = base
+    ok(f"OSD prêt — {base}")
+
+    fails = run_imports()
 
     for dash_id in FP_DASHBOARDS:
         fails += apply_dashboard_drill(s, dash_id)

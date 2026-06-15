@@ -18,6 +18,8 @@ from typing import Any
 import requests
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+from fp_http_lib import request_retry, wait_opensearch  # noqa: E402
 
 OS = os.environ.get("OS_URL", "http://localhost:9200").rstrip("/")
 TARGET_RULES = int(os.environ.get("FP_DET_RULES_TARGET", "700"))
@@ -293,11 +295,11 @@ def ensure_rules_index(session: requests.Session) -> None:
             },
         },
     }
-    session.put(f"{OS}/_index_template/fp-detection-rules-template", json=tpl, timeout=20)
+    session.put(f"{OS}/_index_template/fp-detection-rules-template", json=tpl, timeout=60)
     session.put(
         f"{OS}/{RULES_INDEX}-000001",
         json={"aliases": {RULES_INDEX: {"is_write_index": True}}},
-        timeout=20,
+        timeout=60,
     )
 
 
@@ -307,20 +309,22 @@ def bulk_index_rules(session: requests.Session, docs: list[dict]) -> int:
         lines.append(json.dumps({"index": {"_index": RULES_INDEX}}))
         lines.append(json.dumps(d))
     body = "\n".join(lines) + "\n"
-    r = session.post(f"{OS}/_bulk", data=body.encode(), headers={"Content-Type": "application/x-ndjson"}, timeout=120)
+    r = request_retry(session, "POST", f"{OS}/_bulk", data=body.encode(), headers={"Content-Type": "application/x-ndjson"}, timeout=180)
     if r.status_code != 200:
         print(f"[det-rules] bulk index HTTP {r.status_code}", file=sys.stderr)
         return 0
     res = r.json()
     ok = sum(1 for it in res.get("items", []) if not it.get("index", {}).get("error"))
-    session.post(f"{OS}/{RULES_INDEX}/_refresh", timeout=30)
+    request_retry(session, "POST", f"{OS}/{RULES_INDEX}/_refresh", timeout=60)
     return ok
 
 
 def _existing_monitor_names(session: requests.Session) -> set[str]:
     names: set[str] = set()
     for path in ("/_plugins/_alerting/monitors/_search",):
-        r = session.post(
+        r = request_retry(
+            session,
+            "POST",
             f"{OS}{path}",
             json={"size": 1000, "query": {"match_all": {}}},
             timeout=90,
@@ -339,7 +343,7 @@ def _create_monitor(session: requests.Session, body: dict, existing: set[str] | 
     if existing is not None and name in existing:
         return True
     for path in ALERTING_PATHS:
-        r = session.post(f"{OS}{path}", json=body, timeout=25)
+        r = request_retry(session, "POST", f"{OS}{path}", json=body, timeout=60)
         if r.status_code in (200, 201):
             if existing is not None:
                 existing.add(name)
@@ -365,7 +369,7 @@ def deploy_monitors(session: requests.Session, monitors: list[dict]) -> int:
         pass
     existing_count = 0
     for path in ("/_plugins/_alerting/monitors/_search",):
-        r = session.post(f"{OS}{path}", json={"size": 0, "query": {"match_all": {}}}, timeout=30)
+        r = request_retry(session, "POST", f"{OS}{path}", json={"size": 0, "query": {"match_all": {}}}, timeout=60)
         if r.status_code == 200:
             existing_count = r.json().get("hits", {}).get("total", {}).get("value", 0)
     slots = max(0, MAX_MONITORS_OS - existing_count)
@@ -398,6 +402,9 @@ def deploy_monitors(session: requests.Session, monitors: list[dict]) -> int:
 def main() -> int:
     session = requests.Session()
     session.verify = False
+    if not wait_opensearch(session, OS, timeout_total=300):
+        print("[det-rules] KO OpenSearch inaccessible — abandon", file=sys.stderr)
+        return 1
     catalog = generate_rule_catalog()
     print(f"[det-rules] Catalogue généré : {len(catalog)} règles")
     docs = [d for d, _ in catalog]

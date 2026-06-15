@@ -152,6 +152,10 @@ def build() -> list[dict]:
         ("fp-ti-opencti", "Threat Intelligence — OpenCTI", "forensic-ti-opencti-*", "@timestamp"),
         ("fp-ti-misp", "Threat Intelligence — MISP", "forensic-ti-misp-*", "@timestamp"),
         ("fp-timesketch", "Forensics — Timesketch Events", "forensic-timesketch*,forensic-tokens-*", "@timestamp"),
+        # Références drill-down / cross-pivot (évite missing_references à l'import OSD)
+        ("fp-obs-logs", "Observability — Platform logs", "fp-platform-logs*,forensic-uploads*", "@timestamp"),
+        ("fp-mitre", "Enterprise — MITRE coverage", "fp-mitre-*", "@timestamp"),
+        ("fp-fusion", "Enterprise — Fusion metrics", "forensic-fusion-*", "@timestamp"),
     ]
     for pid, title, pattern, tfield in patterns:
         objects.append(
@@ -240,7 +244,10 @@ def main() -> None:
         "version": "2.12.0",
         "objects": [o["id"] for o in objects],
         "dashboards": ["fp-opensearch-overview", "fp-opensearch-security"],
-        "index_patterns": ["fp-events", "fp-logs", "fp-ti", "fp-timesketch"],
+        "index_patterns": [
+            "fp-events", "fp-logs", "fp-ti", "fp-timesketch",
+            "fp-obs-logs", "fp-mitre", "fp-fusion",
+        ],
     }
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {ndjson_path} ({len(objects)} objects)")

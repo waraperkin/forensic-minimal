@@ -16,6 +16,10 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 OS = os.environ.get("OS_URL", "http://localhost:9200").rstrip("/")
 OSD = os.environ.get("OSD_URL", "http://localhost:5601/dashboards").rstrip("/")
+OSD_NGINX = os.environ.get("OSD_NGINX_URL", "https://localhost/dashboards").rstrip("/")
+
+sys.path.insert(0, str(ROOT / "scripts"))
+from fp_http_lib import wait_osd  # noqa: E402
 
 # Visualisations sample (URLs analyste) → contenu FP
 SAMPLE_VIZ_FP = {
@@ -462,8 +466,16 @@ def fix_vis_builder_571745a0(s: requests.Session) -> int:
 
 
 def main() -> int:
+    global OSD
     s = requests.Session()
     s.verify = False
+    base = wait_osd(s, [OSD, OSD_NGINX], timeout_total=300)
+    if not base:
+        ko("OpenSearch Dashboards inaccessible")
+        return 1
+    OSD = base
+    ok(f"OSD prêt — {base}")
+
     fails = 0
 
     # Rebuild NDJSON + import base

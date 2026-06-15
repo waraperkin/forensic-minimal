@@ -21,7 +21,8 @@ def main() -> int:
         ["bash", str(ROOT / "scripts" / "opensearch_dashboards_import_obs.sh")],
         [sys.executable, str(ROOT / "scripts" / "opensearch_drilldown_setup.py")],
         [sys.executable, str(ROOT / "scripts" / "opensearch_refresh_index_pattern.py"),
-         "fp-events", "fp-logs", "fp-ti", "fp-ti-opencti", "fp-ti-misp", "fp-timesketch", "fp-obs-logs"],
+         "fp-events", "fp-logs", "fp-ti", "fp-ti-opencti", "fp-ti-misp", "fp-timesketch",
+         "fp-obs-logs", "fp-mitre", "fp-fusion", "fp-ti-enriched"],
     ]
     for cmd in steps:
         r = subprocess.run(cmd, cwd=str(ROOT), timeout=600)

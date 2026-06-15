@@ -41,6 +41,12 @@ if [ -z "${IMPORT_BASE:-}" ]; then
   exit 1
 fi
 
+log "2b/4 — Index-patterns requis (ensure avant import)..."
+python3 "$ROOT/scripts/opensearch_refresh_index_pattern.py" --ensure \
+  fp-events fp-logs fp-ti fp-ti-opencti fp-ti-misp fp-timesketch \
+  fp-obs-logs fp-mitre fp-fusion >>"$LOG" 2>&1 || true
+ok "index-patterns ensure"
+
 log "3/4 — Import saved objects (overwrite, retry jusqu'à 0 erreur)..."
 # Nombre total d'objets attendus dans le NDJSON (lignes contenant un "type").
 TOTAL=$(grep -c '"type"' "$NDJSON" 2>/dev/null || echo 0)
@@ -83,7 +89,9 @@ else
 fi
 
 log "3b/4 — Rafraîchissement index-patterns (field_caps)..."
-python3 "$ROOT/scripts/opensearch_refresh_index_pattern.py" fp-events fp-logs fp-ti fp-timesketch >>"$LOG" 2>&1 || true
+python3 "$ROOT/scripts/opensearch_refresh_index_pattern.py" \
+  fp-events fp-logs fp-ti fp-ti-opencti fp-ti-misp fp-timesketch \
+  fp-obs-logs fp-mitre fp-fusion fp-ti-enriched >>"$LOG" 2>&1 || true
 ok "index-patterns rafraîchis"
 
 log "4/4 — Vérification dashboards..."
