@@ -10,16 +10,27 @@ FINGERPRINT_FILE="$SSL_DIR/fingerprint.txt"
 
 mkdir -p "$SSL_DIR"
 
-# Récupérer l'IP locale si possible
-LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+# IP publique (argument, PUBLIC_HOST, ou détection AWS / locale)
+LOCAL_IP="${1:-}"
+if [ -z "$LOCAL_IP" ] && [ -f "$DIR/scripts/lib/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$DIR/scripts/lib/host-ip.sh"
+  LOCAL_IP=$(fp_detect_public_host 2>/dev/null || true)
+fi
+LOCAL_IP="${LOCAL_IP:-$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")}"
+
+_cert_san_has_ip() {
+  [ -f "$CERT" ] || return 1
+  openssl x509 -in "$CERT" -noout -text 2>/dev/null | grep -Fq "$LOCAL_IP"
+}
 
 if [ -f "$CERT" ] && [ -f "$KEY" ]; then
-  # Vérifier si le cert est encore valide (> 30 jours)
-  if openssl x509 -checkend 2592000 -noout -in "$CERT" 2>/dev/null; then
-    echo "[ssl] Certificat existant valide — conservation"
+  # Vérifier si le cert est encore valide (> 30 jours) ET SAN correct
+  if openssl x509 -checkend 2592000 -noout -in "$CERT" 2>/dev/null && _cert_san_has_ip; then
+    echo "[ssl] Certificat existant valide (SAN=$LOCAL_IP) — conservation"
     exit 0
   fi
-  echo "[ssl] Certificat expiré — régénération"
+  echo "[ssl] Certificat expiré ou SAN ≠ $LOCAL_IP — régénération"
 fi
 
 echo "[ssl] Génération certificat SSL RSA-4096..."

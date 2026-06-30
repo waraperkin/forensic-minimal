@@ -10,6 +10,11 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH
 
 DIR="$(cd "$(dirname "$0")" && pwd)"; cd "$DIR"
 
+if [ -f "$DIR/scripts/lib/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$DIR/scripts/lib/host-ip.sh"
+fi
+
 # Chemins d'état SOC/health DANS le projet (logs/, inscriptible par l'utilisateur).
 # Évite l'échec "Permission denied" sur d'éventuels fichiers /tmp/fp-* résiduels
 # appartenant à root (run antérieur). Tous les scripts honorent ces variables.
@@ -28,11 +33,14 @@ step(){ echo -e "\n${BLUE}━━━ $* ━━━${NC}"; }
 #  Point d'entrée : ./forensic.sh tls  (ou appelé depuis pre_start)
 # ──────────────────────────────────────────────────────────────
 setup_tls() {
-  # Détection automatique de l'IP de la VM
+  # Détection automatique de l'IP publique (AWS IMDS, routable, fallback locale)
   local IP
-  IP=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+  IP=$(fp_detect_public_host 2>/dev/null || true)
+  if [ -z "$IP" ] || [ "$IP" = "127.0.0.1" ]; then
+    IP=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+  fi
   if [ -z "$IP" ]; then
-    err "[TLS] Impossible de détecter l'IP (hostname -I)"
+    err "[TLS] Impossible de détecter l'IP (fp_detect_public_host / hostname -I)"
     return 1
   fi
   echo "[TLS] IP détectée : $IP"
@@ -44,12 +52,19 @@ setup_tls() {
     echo "[TLS] CA interne déjà présente."
   fi
 
+  local need_server_cert=0
   if [ ! -f "$DIR/nginx/certs/server/server.crt" ] \
     || [ ! -f "$DIR/nginx/certs/server/server.key" ]; then
-    echo "[TLS] Certificat serveur absent — génération pour $IP..."
+    need_server_cert=1
+  elif ! _fp_cert_san_contains_ip "$DIR/nginx/certs/server/server.crt" "$IP"; then
+    echo "[TLS] Certificat serveur SAN ≠ $IP — régénération..."
+    need_server_cert=1
+  fi
+  if [ "$need_server_cert" -eq 1 ]; then
+    echo "[TLS] Génération certificat serveur pour $IP..."
     bash "$DIR/scripts/generate_server_cert.sh" "$IP"
   else
-    echo "[TLS] Certificat serveur déjà présent."
+    echo "[TLS] Certificat serveur déjà présent (SAN=$IP)."
   fi
 
   echo "[TLS] Mise à jour des config.json avec soc_base_url=https://$IP"
@@ -78,12 +93,11 @@ PY
   _tls_update_config_json "$DIR/portal-cert/public/config.json"
   _tls_update_config_json "$DIR/portal-it/public/config.json"
 
-  echo "[TLS] Mise à jour de nginx.conf avec server_name $IP"
+  echo "[TLS] Mise à jour nginx (server_name catch-all + maps Grafana)..."
+  _fp_patch_nginx_server_name "$DIR/config/nginx/conf.d/forensic.conf" "$IP"
+  _fp_patch_nginx_grafana_maps "$DIR/config/nginx/conf.d/forensic.conf" "$IP"
   if [ -f "$DIR/nginx/nginx.conf" ]; then
     sed -i "s/^[[:space:]]*# server_name .*/# server_name ${IP};/" "$DIR/nginx/nginx.conf" 2>/dev/null || true
-  fi
-  if [ -f "$DIR/config/nginx/conf.d/forensic.conf" ]; then
-    sed -i "s/server_name .*/server_name ${IP};/" "$DIR/config/nginx/conf.d/forensic.conf"
   fi
 
   echo "[TLS] Redémarrage Nginx + portails CERT/IT..."
@@ -174,7 +188,7 @@ pre_start() {
   if [ "$need_cert" -eq 1 ]; then
     info "Génération certificat SSL RSA-4096 (365 jours)..."
     local LOCAL_IP
-    LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+    LOCAL_IP=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
     cat > /tmp/ssl.cnf << SSLEOF
 [req]
 distinguished_name=req_dn
@@ -969,7 +983,7 @@ full_start_orchestrator() {
   START_WARN=()
 
   local ip
-  ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
   [ -n "$ip" ] && export FP_ORCH_BASE_URL="https://${ip}"
 
   echo ""
@@ -2681,8 +2695,9 @@ reset() {
 #  URLS
 # ──────────────────────────────────────────────────────────────
 urls() {
-  local IP
-  IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
+  local IP aws_pub
+  IP=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
+  aws_pub=$(_fp_aws_public_ipv4 2>/dev/null || true)
   local FP
   FP=$(cat config/nginx/ssl/fingerprint.txt 2>/dev/null | head -1 || echo "—")
   echo ""
@@ -2711,6 +2726,11 @@ urls() {
   echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════╣${NC}"
   echo -e "${CYAN}║${NC}  🔒 Cert auto-signé — accepter l'avertissement navigateur"
   echo -e "${CYAN}║${NC}  Fingerprint: ${FP}"
+  if _fp_is_ipv4 "$aws_pub" 2>/dev/null && [ "$aws_pub" != "$IP" ]; then
+    echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC}  ☁️  AWS : accès navigateur via IP publique ${aws_pub}"
+    echo -e "${CYAN}║${NC}  Ouvrir le groupe de sécurité : TCP 80, 443 (et 5000 si Timesketch direct)"
+  fi
   echo -e "${CYAN}╠════════════════════════════════════════════════════════════════════╣${NC}"
   echo -e "${CYAN}║${NC}  Logstash → Beats :5044  JSON :5045  Syslog :5140/udp  HEC :5555"
   echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════╝${NC}"

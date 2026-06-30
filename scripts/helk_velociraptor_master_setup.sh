@@ -3,6 +3,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HELK_ROOT="$ROOT/helk"
+if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$ROOT/scripts/lib/host-ip.sh"
+fi
+PUBLIC_HOST="${PUBLIC_HOST:-$(fp_detect_public_host 2>/dev/null || true)}"
 PUBLIC_HOST="${PUBLIC_HOST:-10.78.0.9}"
 VR_ADMIN="${VELOCIRAPTOR_ADMIN_USER:-admin}"
 VR_PASS="${VELOCIRAPTOR_ADMIN_PASSWORD:-F0r3ns1c_VR_2024!}"

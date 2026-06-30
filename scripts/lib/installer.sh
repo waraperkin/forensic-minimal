@@ -15,6 +15,14 @@
 # Idempotent — réexécutable sans erreur ni régression.
 # Ne tue jamais le script (return au lieu de exit).
 
+if [ -n "${DIR:-}" ] && [ -f "${DIR}/scripts/lib/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "${DIR}/scripts/lib/host-ip.sh"
+elif [ -f "$(dirname "${BASH_SOURCE[0]}")/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$(dirname "${BASH_SOURCE[0]}")/host-ip.sh"
+fi
+
 # Hérite des couleurs et helpers de forensic.sh (info/ok/warn/err/step).
 # Si appelé en standalone, on fournit des fallbacks.
 if ! command -v info >/dev/null 2>&1; then
@@ -1457,7 +1465,7 @@ _fp_bootstrap_env_file() {
 # Remplit TOUTES les variables critiques vides + valide qu'aucune n'est vide.
 _fp_bootstrap_env_complete() {
   local root="${DIR:-.}" ip rc=0
-  ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
   [ -f "$root/.env" ] || { err ".env introuvable"; return 1; }
   if ! command -v python3 >/dev/null 2>&1; then
     err "python3 requis pour le bootstrap .env"
@@ -1468,6 +1476,34 @@ import re, secrets, uuid, base64, sys, pathlib
 path = pathlib.Path(sys.argv[1])
 ip = sys.argv[2]
 lines = path.read_text(encoding="utf-8").splitlines()
+
+PLACEHOLDER_HOST = "10.78.0.9"
+HOST_KEYS = (
+    "PUBLIC_HOST", "TIMESKETCH_EXTERNAL_URL", "MISP_PUBLIC_BASE_URL",
+    "GRAFANA_ROOT_URL", "GRAFANA_DOMAIN", "GRAFANA_ALLOWED_ORIGINS",
+    "GRAFANA_CSRF_ORIGINS", "GRAFANA_CORS_ORIGIN",
+)
+
+def host_default(k: str, ip: str) -> str:
+    return {
+        "PUBLIC_HOST": ip,
+        "TIMESKETCH_EXTERNAL_URL": f"https://{ip}/timesketch",
+        "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp/",
+        "GRAFANA_ROOT_URL": f"https://{ip}/grafana/",
+        "GRAFANA_DOMAIN": ip,
+        "GRAFANA_ALLOWED_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
+        "GRAFANA_CSRF_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
+        "GRAFANA_CORS_ORIGIN": f"https://{ip},http://{ip},https://localhost,http://localhost",
+    }[k]
+
+def should_patch_host(k: str, val: str) -> bool:
+    if k not in HOST_KEYS:
+        return False
+    if val == "":
+        return True
+    if val == PLACEHOLDER_HOST or PLACEHOLDER_HOST in val:
+        return True
+    return False
 
 DEFAULTS = {
     "POSTGRES_USER": "forensic",
@@ -1553,6 +1589,11 @@ for line in lines:
 for k, dv in DEFAULTS.items():
     if k not in existing or existing[k] == "":
         existing[k] = dv
+
+# Toujours remplacer les placeholders IP lab (10.78.0.9) par l'IP détectée
+for k in HOST_KEYS:
+    if should_patch_host(k, existing.get(k, "")):
+        existing[k] = host_default(k, ip)
 
 for k in list(existing.keys()) + list(CRITICAL):
     if k not in existing:
@@ -1651,7 +1692,7 @@ _fp_bootstrap_external_networks() {
 
 _fp_bootstrap_generate_configs() {
   local root="${DIR:-.}" ip cfg
-  ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
   if [ -x "$root/scripts/generate-timesketch-conf.sh" ]; then
     bash "$root/scripts/generate-timesketch-conf.sh" >> "$FP_LOG_INSTALL" 2>&1 \
       && ok "timesketch.conf généré" \
@@ -1673,9 +1714,10 @@ PY
     fi
   done
   if [ -f "$root/config/nginx/conf.d/forensic.conf" ]; then
-    sed -i "s/server_name .*/server_name ${ip};/" "$root/config/nginx/conf.d/forensic.conf" 2>/dev/null || true
+    _fp_patch_nginx_server_name "$root/config/nginx/conf.d/forensic.conf" "$ip"
+    _fp_patch_nginx_grafana_maps "$root/config/nginx/conf.d/forensic.conf" "$ip"
   fi
-  ok "Portails config.json + nginx server_name → $ip"
+  ok "Portails config.json + nginx → $ip"
 }
 
 _fp_bootstrap_cert_dirs() {
@@ -1700,8 +1742,8 @@ _fp_bootstrap_cert_dirs() {
 }
 
 _fp_bootstrap_generate_tls() {
-  local root="${DIR:-.}" ip rc=0
-  ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  local root="${DIR:-.}" ip rc=0 need_server=0
+  ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 
   if [ ! -f "$root/nginx/certs/ca/ca.crt" ] || [ ! -f "$root/nginx/certs/ca/ca.key" ]; then
     info "Génération CA interne (openssl)..."
@@ -1709,16 +1751,27 @@ _fp_bootstrap_generate_tls() {
   fi
 
   if [ ! -f "$root/nginx/certs/server/server.crt" ] || [ ! -f "$root/nginx/certs/server/server.key" ]; then
+    need_server=1
+  elif ! _fp_cert_san_contains_ip "$root/nginx/certs/server/server.crt" "$ip"; then
+    info "Certificat serveur SAN ≠ $ip — régénération..."
+    need_server=1
+  fi
+  if [ "$need_server" -eq 1 ]; then
     info "Génération certificat serveur Nginx (SAN IP=$ip)..."
     bash "$root/scripts/generate_server_cert.sh" "$ip" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
   fi
 
   if [ ! -f "$root/config/nginx/ssl/forensic.crt" ] || [ ! -f "$root/config/nginx/ssl/forensic.key" ]; then
     info "Génération certificat SSL portails (config/nginx/ssl)..."
-    bash "$root/scripts/generate-ssl-cert.sh" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
+    bash "$root/scripts/generate-ssl-cert.sh" "$ip" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
+  elif ! _fp_cert_san_contains_ip "$root/config/nginx/ssl/forensic.crt" "$ip"; then
+    info "Certificat portails SAN ≠ $ip — régénération..."
+    rm -f "$root/config/nginx/ssl/forensic.crt" "$root/config/nginx/ssl/forensic.key" \
+      "$root/config/nginx/ssl/fingerprint.txt" 2>/dev/null || true
+    bash "$root/scripts/generate-ssl-cert.sh" "$ip" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
   fi
 
-  [ "$rc" -eq 0 ] && ok "Certificats TLS générés/vérifiés" || warn "Génération TLS partielle — voir logs/forensic_install.log"
+  [ "$rc" -eq 0 ] && ok "Certificats TLS générés/vérifiés (IP=$ip)" || warn "Génération TLS partielle — voir logs/forensic_install.log"
   return "$rc"
 }
 
@@ -1810,6 +1863,9 @@ fp_bootstrap_fresh_machine() {
   export FP_TLS_NO_DOCKER=1
   fp_log install "bootstrap fresh machine OK"
   ok "Bootstrap machine vierge terminé (.env + TLS + dossiers)"
+  if _fp_is_ipv4 "$(_fp_aws_public_ipv4 2>/dev/null || true)" 2>/dev/null; then
+    info "AWS détecté — vérifier le Security Group (TCP 80/443) et utiliser l'IP publique affichée par ./forensic.sh urls"
+  fi
   [ "$_had_e" -eq 1 ] && set -e
   return 0
 }
