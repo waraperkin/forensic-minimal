@@ -246,7 +246,7 @@ app.get('/api/config', (_req, res) => {
 
 /** Credentials de référence (lecture seule) — mots de passe en clair depuis variables d'environnement */
 app.get('/api/credentials', (_req, res) => {
-  const host = process.env.PUBLIC_HOST || process.env.GRAFANA_DOMAIN || '10.78.0.9';
+  const host = process.env.PUBLIC_HOST || process.env.GRAFANA_DOMAIN || 'localhost';
   const baseHttps = `https://${host}`;
   const pw = (key, fallback = '—') => {
     const v = process.env[key];
