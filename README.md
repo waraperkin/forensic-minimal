@@ -122,12 +122,61 @@ Alias équivalents : `./forensic.sh full-start`, `./forensic.sh full`, `./forens
 Sur une machine vierge, **aucune configuration manuelle** n’est requise :
 
 1. Copie `.env.example` → `.env` et génération des **secrets** (MinIO, MySQL/MISP, OpenCTI, portails, Grafana, TheHive, Cortex, etc.)
-2. Génération **TLS** : CA interne, certificat serveur, certs portails / HELK / Velociraptor
-3. Création des dossiers persistants et validation Nginx
-4. Génération `timesketch.conf`, patch `config.json` portails (`soc_base_url`)
-5. Création des réseaux Docker externes `helk_net` (172.30.0.0/24) et `velociraptor_net` (172.31.0.0/24)
+2. **Détection automatique de l’IP publique** (`scripts/lib/host-ip.sh`) :
+   - variable `PUBLIC_HOST` si définie explicitement ;
+   - sinon **IMDS AWS** (`public-ipv4`) sur EC2 ;
+   - sinon première IP routable de l’hôte ;
+   - sinon IP locale / `hostname -I`.
+3. Injection de cette IP dans `.env` (`PUBLIC_HOST`, `GRAFANA_*`, `MISP_PUBLIC_BASE_URL`, `TIMESKETCH_EXTERNAL_URL`, etc.) — les anciens placeholders lab (`10.78.0.9`) sont **toujours remplacés**.
+4. Génération **TLS** : CA interne, certificat serveur (SAN = IP détectée), certs portails / HELK / Velociraptor
+5. Création des dossiers persistants, patch Nginx / portails / `timesketch.conf`
+6. Création des réseaux Docker externes `helk_net` (172.30.0.0/24) et `velociraptor_net` (172.31.0.0/24)
 
-L’IP publique de la machine est détectée automatiquement (`hostname -I`) et injectée dans TLS et les portails.
+> **Important :** ne pas éditer manuellement les URLs dans `.env.example` avec une IP fixe. Laisser `PUBLIC_HOST=` vide : le bootstrap remplit tout au premier `./forensic.sh -full-start`.
+
+### Déploiement sur VM AWS (EC2)
+
+Procédure recommandée sur une instance **vierge** (Ubuntu 22.04+ ou Debian 12) :
+
+```bash
+git clone https://github.com/waraperkin/forensic-minimal.git
+cd forensic-minimal
+./forensic.sh -full-start
+./forensic.sh urls          # affiche l’IP publique et les liens HTTPS
+```
+
+**Avant d’ouvrir le navigateur :**
+
+| Étape | Action |
+|-------|--------|
+| **Security Group** | Autoriser TCP **80** et **443** (entrée) depuis votre IP ou votre réseau |
+| **IP d’accès** | Utiliser l’**Elastic IP publique** affichée par `./forensic.sh urls` (pas l’IP privée `172.31.x.x`) |
+| **Certificat** | Accepter l’exception navigateur (certificat auto-signé) ou importer `nginx/certs/ca/ca.crt` |
+
+**Vérification rapide après démarrage :**
+
+```bash
+IP=$(./forensic.sh urls 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+curl -sk "https://${IP}/nginx-health"
+curl -sk "https://${IP}/api/health/global" | jq .
+```
+
+Réponse attendue : `summary.ok` = 11, `summary.down` = 0.
+
+**Forcer une IP précise** (Elastic IP, autre interface) :
+
+```bash
+PUBLIC_HOST=<votre-ip-publique> ./forensic.sh tls
+docker compose up -d --force-recreate nginx cert-portal it-portal grafana
+```
+
+**Si un ancien `.env` contient encore `10.78.0.9`** (IP du lab d’origine), relancer simplement :
+
+```bash
+./forensic.sh -full-start
+```
+
+Le patch IP est ré-appliqué à chaque démarrage (`pre_start`).
 
 ### Options utiles
 
@@ -143,7 +192,11 @@ FP_DISK_CRITICAL_PCT=96 ./forensic.sh -full-start
 
 ## Access URLs
 
-Remplacez `<IP>` par l’adresse de la machine (`hostname -I | awk '{print $1}'`).
+Remplacez `<IP>` par l’adresse affichée par `./forensic.sh urls` (détection automatique, priorité à l’**IP publique AWS** sur EC2).
+
+```bash
+./forensic.sh urls
+```
 
 Tous les services passent par **HTTPS** (certificat auto-signé — accepter l’exception navigateur ou importer la CA depuis `nginx/certs/ca/ca.crt`).
 
@@ -240,6 +293,17 @@ Scripts de setup sidecar : `scripts/helk_velociraptor_master_setup.sh`
 
 ## Tests
 
+### Tests bootstrap & IP (sans Docker)
+
+À lancer après clone ou modification du bootstrap — valide qu’aucune IP lab figée (`10.78.0.9`) ne reste dans la chaîne critique :
+
+```bash
+bash scripts/test_host_ip.sh
+python3 scripts/test_bootstrap_env_host.py
+bash scripts/test_nginx_config.sh
+bash scripts/test_bootstrap_fresh_install.sh   # simule une install fraîche (IP fictive)
+```
+
 ### Tests intégrés au full-start
 
 L’orchestrateur exécute notamment :
@@ -285,6 +349,9 @@ python3 scripts/opensearch_siem_full_verify.py
 
 | Symptôme | Action |
 |----------|--------|
+| Portail / outils inaccessibles depuis le navigateur (AWS) | Vérifier Security Group TCP 80/443 ; utiliser l’**IP publique** (`./forensic.sh urls`), pas l’IP privée EC2 |
+| URLs ou Grafana/MISP cassés (mauvaise IP) | `PUBLIC_HOST=<ip-publique> ./forensic.sh tls` puis `docker compose up -d --force-recreate nginx cert-portal it-portal grafana` |
+| `.env` contient encore `10.78.0.9` | Relancer `./forensic.sh -full-start` (patch automatique) |
 | Certificat navigateur refusé | Accepter l’exception ou `./forensic.sh tls` |
 | OpenSearch cluster red | `./forensic.sh fix-opensearch` |
 | Port déjà utilisé | `./forensic.sh full-stop` sur l’autre stack, ou libérer le port |
