@@ -698,7 +698,7 @@ services:
     container_name: forensic-misp
     restart: unless-stopped
     environment:
-      - BASE_URL=${MISP_PUBLIC_BASE_URL:-https://10.78.0.9/misp/}
+      - BASE_URL=${MISP_PUBLIC_BASE_URL:-https://localhost/misp/}
       - DISABLE_SSL_REDIRECT=true
       - PHP_SESSION_COOKIE_SECURE=true
       - PHP_SESSION_COOKIE_SAMESITE=Lax
@@ -840,18 +840,18 @@ services:
       - GF_UNIFIED_ALERTING_ENABLED=true
       - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor tempoSearch
       - GF_SERVER_PROTOCOL=http
-      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-https://10.78.0.9/grafana/}
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-https://localhost/grafana/}
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
-      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN:-10.78.0.9}
+      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN:-localhost}
       - GF_SERVER_ENFORCE_DOMAIN=false
-      - GF_LIVE_ALLOWED_ORIGINS=${GRAFANA_ALLOWED_ORIGINS:-https://10.78.0.9,http://10.78.0.9,https://localhost,http://localhost,https://127.0.0.1,http://127.0.0.1}
+      - GF_LIVE_ALLOWED_ORIGINS=${GRAFANA_ALLOWED_ORIGINS:-https://localhost,http://localhost,https://127.0.0.1,http://127.0.0.1}
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_SECURITY_COOKIE_SAMESITE=none
       - GF_SECURITY_COOKIE_SECURE=true
-      - GF_SECURITY_CSRF_TRUSTED_ORIGINS=${GRAFANA_CSRF_ORIGINS:-https://10.78.0.9,http://10.78.0.9,https://localhost,http://localhost,https://127.0.0.1,http://127.0.0.1}
+      - GF_SECURITY_CSRF_TRUSTED_ORIGINS=${GRAFANA_CSRF_ORIGINS:-https://localhost,http://localhost,https://127.0.0.1,http://127.0.0.1}
       - GF_CORS_ENABLED=true
       - GF_CORS_ALLOW_CREDENTIALS=true
-      - GF_CORS_ALLOW_ORIGIN=${GRAFANA_CORS_ORIGIN:-https://10.78.0.9,http://10.78.0.9,https://localhost,http://localhost}
+      - GF_CORS_ALLOW_ORIGIN=${GRAFANA_CORS_ORIGIN:-https://localhost,http://localhost}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
@@ -1075,9 +1075,9 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - PUBLIC_HOST=${PUBLIC_HOST:-${GRAFANA_DOMAIN:-10.78.0.9}}
-      - MISP_PUBLIC_BASE_URL=${MISP_PUBLIC_BASE_URL:-https://10.78.0.9/misp/}
-      - TIMESKETCH_EXTERNAL_URL=${TIMESKETCH_EXTERNAL_URL:-https://10.78.0.9/timesketch}
+      - PUBLIC_HOST=${PUBLIC_HOST:-${GRAFANA_DOMAIN:-localhost}}
+      - MISP_PUBLIC_BASE_URL=${MISP_PUBLIC_BASE_URL:-https://localhost/misp/}
+      - TIMESKETCH_EXTERNAL_URL=${TIMESKETCH_EXTERNAL_URL:-https://localhost/timesketch}
       - THEHIVE_URL=http://thehive:9000/thehive
       - MISP_URL=http://misp:80
       - MISP_API_KEY=${MISP_ADMIN_API_KEY}

@@ -19,6 +19,6 @@ processors:
         dataset: linux.syslog
 
 output.logstash:
-  hosts: ["10.78.0.9:15514"]
+  hosts: ["localhost:15514"]
 
 logging.level: info

@@ -8,7 +8,7 @@ if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
   . "$ROOT/scripts/lib/host-ip.sh"
 fi
 PUBLIC_HOST="${PUBLIC_HOST:-$(fp_detect_public_host 2>/dev/null || true)}"
-PUBLIC_HOST="${PUBLIC_HOST:-10.78.0.9}"
+PUBLIC_HOST="${PUBLIC_HOST:-$(fp_resolve_public_host 2>/dev/null || echo "localhost")}"
 VR_ADMIN="${VELOCIRAPTOR_ADMIN_USER:-admin}"
 VR_PASS="${VELOCIRAPTOR_ADMIN_PASSWORD:-F0r3ns1c_VR_2024!}"
 

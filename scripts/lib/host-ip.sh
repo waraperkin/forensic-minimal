@@ -134,3 +134,27 @@ _fp_patch_nginx_server_name() {
   sed -i "s/server_name .*/server_name _;/" "$conf" 2>/dev/null || true
   sed -i "s/^[[:space:]]*# server_name .*/# server_name ${ip};/" "$conf" 2>/dev/null || true
 }
+
+# Charge PUBLIC_HOST depuis .env si présent (sans écraser l'environnement courant).
+fp_load_env_public_host() {
+  local root="${DIR:-.}" line key val
+  [ -f "$root/.env" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in "#"*|"") continue ;; esac
+    if [[ "$line" =~ ^PUBLIC_HOST=(.*)$ ]]; then
+      val="${BASH_REMATCH[1]}"
+      val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"
+      if [ -n "$val" ] && ! _fp_is_placeholder_host "$val"; then
+        export PUBLIC_HOST="$val"
+        return 0
+      fi
+    fi
+  done < "$root/.env"
+  return 1
+}
+
+# IP effective pour toute la plateforme (env explicite > détection > fallback).
+fp_resolve_public_host() {
+  fp_load_env_public_host 2>/dev/null || true
+  fp_detect_public_host 2>/dev/null || echo "127.0.0.1"
+}

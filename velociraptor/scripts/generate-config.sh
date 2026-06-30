@@ -3,7 +3,12 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="${VR_BIN:-/tmp/velociraptor}"
-PUBLIC_HOST="${PUBLIC_HOST:-10.78.0.9}"
+if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$ROOT/scripts/lib/host-ip.sh"
+  fp_load_env_public_host 2>/dev/null || true
+fi
+PUBLIC_HOST="${PUBLIC_HOST:-$(fp_resolve_public_host 2>/dev/null || echo "localhost")}"
 DATA_DIR="/data"
 
 if [[ ! -x "$BIN" ]]; then

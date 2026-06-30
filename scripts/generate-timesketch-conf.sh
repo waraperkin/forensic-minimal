@@ -17,6 +17,25 @@ if [ -f "$DIR/.env" ]; then
 fi
 
 mkdir -p "$DIR/config/timesketch"
+
+# IP publique : .env > détection AWS/locale > localhost
+HOST_IP=""
+if [ -n "${TIMESKETCH_EXTERNAL_URL:-}" ] && ! echo "${TIMESKETCH_EXTERNAL_URL}" | grep -q '10\.78\.0\.9'; then
+  HOST_IP="${TIMESKETCH_EXTERNAL_URL%/timesketch}"
+  HOST_IP="${HOST_IP#https://}"
+  HOST_IP="${HOST_IP#http://}"
+fi
+if [ -z "$HOST_IP" ] && [ -f "$DIR/scripts/lib/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$DIR/scripts/lib/host-ip.sh"
+  HOST_IP=$(fp_resolve_public_host 2>/dev/null || true)
+fi
+HOST_IP="${HOST_IP:-localhost}"
+EXTERNAL_URL="${TIMESKETCH_EXTERNAL_URL:-}"
+if [ -z "$EXTERNAL_URL" ] || echo "$EXTERNAL_URL" | grep -q '10\.78\.0\.9'; then
+  EXTERNAL_URL="https://${HOST_IP}/timesketch"
+fi
+
 cat > "$DIR/config/timesketch/timesketch.conf" << CONF
 # Timesketch configuration — généré automatiquement par forensic.sh / generate-timesketch-conf.sh
 SECRET_KEY = "${TIMESKETCH_SECRET_KEY:-ts-secret-forensic-2024-changeme}"
@@ -56,6 +75,6 @@ ENABLE_EXPERIMENTAL_UI = False
 # Reverse proxy (Nginx) — voir https://timesketch.org/guides/admin/install/
 REVERSE_PROXY_COUNT = 1
 # URL publique du conteneur web Timesketch (port 5000 par défaut)
-EXTERNAL_HOST_URL = "${TIMESKETCH_EXTERNAL_URL:-https://localhost/timesketch}"
+EXTERNAL_HOST_URL = "${EXTERNAL_URL}"
 CONF
 echo "[ts-conf] OK — timesketch.conf généré"

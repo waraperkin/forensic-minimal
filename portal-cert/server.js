@@ -59,7 +59,7 @@ const CFG = {
   thehive:  { url:process.env.THEHIVE_URL||'http://thehive:9000/thehive' },
   misp:     { url:process.env.MISP_URL||'http://misp:80' },
   logstash: { host:process.env.LOGSTASH_HOST||'logstash', port:5045 },
-  itUrl:    process.env.IT_PORTAL_URL||`https://${process.env.PUBLIC_HOST||process.env.GRAFANA_DOMAIN||'10.78.0.9'}/it/`,
+  itUrl:    process.env.IT_PORTAL_URL||`https://${process.env.PUBLIC_HOST||process.env.GRAFANA_DOMAIN||'localhost'}/it/`,
 };
 
 const s3 = new S3Client({ endpoint:`http://${CFG.minio.endpoint}`, region:'us-east-1', credentials:{accessKeyId:CFG.minio.ak,secretAccessKey:CFG.minio.sk}, forcePathStyle:true });

@@ -172,6 +172,9 @@ pre_start() {
   fi
 
   # TLS CYBERCORP (CA interne + cert IP + config portails) ───
+  if command -v _fp_ensure_runtime_host_config >/dev/null 2>&1; then
+    _fp_ensure_runtime_host_config || warn "patch IP hôte partiel — voir logs/forensic_install.log"
+  fi
   setup_tls || warn "setup_tls: échec partiel — relancer ./forensic.sh tls"
 
   # Certificat SSL ─────────────────────────────────────────────

@@ -1690,9 +1690,36 @@ _fp_bootstrap_external_networks() {
   return 0
 }
 
+_fp_bootstrap_patch_helk_lab_configs() {
+  local root="${DIR:-.}" ip="$1" f
+  for f in "$root/helk/config/lab/filebeat-lab.yml" "$root/helk/config/lab/winlogbeat-lab.yml"; do
+    [ -f "$f" ] || continue
+    sed -i -E "s/hosts: \\[\"[0-9.]+:15514\"\\]/hosts: [\"${ip}:15514\"]/" "$f" 2>/dev/null || true
+  done
+}
+
+_fp_ensure_runtime_host_config() {
+  local root="${DIR:-.}" ip
+  ip=$(fp_resolve_public_host 2>/dev/null || echo "127.0.0.1")
+  _fp_bootstrap_env_complete 2>/dev/null || true
+  if [ -x "$root/scripts/generate-timesketch-conf.sh" ]; then
+    bash "$root/scripts/generate-timesketch-conf.sh" >> "${FP_LOG_INSTALL:-$root/logs/forensic_install.log}" 2>&1 || true
+  fi
+  for cfg in "$root/portal-cert/public/config.json" "$root/portal-it/public/config.json"; do
+    [ -f "$cfg" ] || continue
+    if grep -q '10\.78\.0\.9' "$cfg" 2>/dev/null || grep -q '"soc_base_url": ""' "$cfg" 2>/dev/null; then
+      if command -v jq >/dev/null 2>&1; then
+        jq --arg url "https://${ip}" '.soc_base_url = $url' "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+      fi
+    fi
+  done
+  _fp_bootstrap_patch_helk_lab_configs "$ip"
+  return 0
+}
+
 _fp_bootstrap_generate_configs() {
   local root="${DIR:-.}" ip cfg
-  ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  ip=$(fp_resolve_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
   if [ -x "$root/scripts/generate-timesketch-conf.sh" ]; then
     bash "$root/scripts/generate-timesketch-conf.sh" >> "$FP_LOG_INSTALL" 2>&1 \
       && ok "timesketch.conf généré" \
@@ -1717,7 +1744,8 @@ PY
     _fp_patch_nginx_server_name "$root/config/nginx/conf.d/forensic.conf" "$ip"
     _fp_patch_nginx_grafana_maps "$root/config/nginx/conf.d/forensic.conf" "$ip"
   fi
-  ok "Portails config.json + nginx → $ip"
+  _fp_bootstrap_patch_helk_lab_configs "$ip"
+  ok "Portails config.json + nginx + timesketch + HELK lab → $ip"
 }
 
 _fp_bootstrap_cert_dirs() {

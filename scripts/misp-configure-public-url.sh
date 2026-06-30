@@ -2,7 +2,27 @@
 # Aligne MISP.baseurl sur l'URL publique HTTPS (proxy Nginx /misp/).
 set -eu
 
-PUBLIC_BASE="${MISP_PUBLIC_BASE_URL:-https://10.78.0.9/misp}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$ROOT/scripts/lib/host-ip.sh"
+fi
+if [ -f "$ROOT/.env" ]; then
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    case "$_line" in "#"*|"") continue ;; esac
+    if echo "$_line" | grep -q '^MISP_PUBLIC_BASE_URL='; then
+      _v="${_line#MISP_PUBLIC_BASE_URL=}"
+      _v="${_v%\"}"; _v="${_v#\"}"; _v="${_v%\'}"; _v="${_v#\'}"
+      [ -n "$_v" ] && export MISP_PUBLIC_BASE_URL="$_v"
+    fi
+  done < "$ROOT/.env"
+fi
+
+PUBLIC_BASE="${MISP_PUBLIC_BASE_URL:-}"
+if [ -z "$PUBLIC_BASE" ] || echo "$PUBLIC_BASE" | grep -q '10\.78\.0\.9'; then
+  _ip=$(fp_resolve_public_host 2>/dev/null || echo "localhost")
+  PUBLIC_BASE="https://${_ip}/misp"
+fi
 # MISP attend une URL sans slash final dans la config interne
 PUBLIC_BASE="${PUBLIC_BASE%/}"
 

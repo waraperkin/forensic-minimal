@@ -24,7 +24,7 @@ for d in /etc/nginx/http.d /etc/nginx/sites-enabled /etc/nginx/conf.d; do
 done
 
 if [ -x /scripts/misp-configure-public-url.sh ]; then
-  MISP_PUBLIC_BASE_URL="${MISP_PUBLIC_BASE_URL:-https://10.78.0.9/misp/}" \
+  MISP_PUBLIC_BASE_URL="${MISP_PUBLIC_BASE_URL:-}" \
     /scripts/misp-configure-public-url.sh || true
 fi
 

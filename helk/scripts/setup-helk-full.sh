@@ -3,7 +3,12 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FM="${FM_ROOT:-$(dirname "$ROOT")}"
-PUBLIC_HOST="${PUBLIC_HOST:-10.78.0.9}"
+if [ -f "$FM/scripts/lib/host-ip.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$FM/scripts/lib/host-ip.sh"
+  fp_load_env_public_host 2>/dev/null || true
+fi
+PUBLIC_HOST="${PUBLIC_HOST:-$(fp_resolve_public_host 2>/dev/null || echo "localhost")}"
 
 step() { echo -e "\n\033[0;36m━━━ $* ━━━\033[0m"; }
 
