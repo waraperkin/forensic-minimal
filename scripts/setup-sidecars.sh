@@ -10,8 +10,10 @@ if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
   . "$ROOT/scripts/lib/host-ip.sh"
   fp_load_env_public_host 2>/dev/null || true
 fi
-PUBLIC_HOST="${PUBLIC_HOST:-$(fp_resolve_public_host 2>/dev/null || echo "localhost")}"
+PUBLIC_HOST="${PUBLIC_HOST:-$(fp_url_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")}"
+PUBLIC_HOST=$(fp_normalize_host "$PUBLIC_HOST" 2>/dev/null || echo "$PUBLIC_HOST")
 export PUBLIC_HOST
+export HELK_KIBANA_PUBLIC_URL="https://${PUBLIC_HOST}/helk/kibana"
 export FP_VR_NGINX_ONLY="${FP_VR_NGINX_ONLY:-1}"
 
 step() { echo -e "\n\033[0;34m━━━ $* ━━━\033[0m"; }
@@ -42,7 +44,8 @@ fi
 
 step "Stack HELK sidecar (ES + Kibana + Logstash)"
 cd "$ROOT/helk"
-docker compose -f docker-compose.helk.yml -f docker-compose.external-net.yml up -d \
+HELK_KIBANA_PUBLIC_URL="$HELK_KIBANA_PUBLIC_URL" \
+  docker compose -f docker-compose.helk.yml -f docker-compose.external-net.yml up -d \
   helk-elasticsearch helk-kibana helk-logstash 2>&1 \
   | tee -a "${FP_LOG_START:-$ROOT/logs/forensic_start.log}" \
   || warn "HELK sidecar partiel (Kafka non requis pour Kibana)"

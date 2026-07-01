@@ -20,11 +20,14 @@ fi
 
 PUBLIC_BASE="${MISP_PUBLIC_BASE_URL:-}"
 if [ -z "$PUBLIC_BASE" ] || echo "$PUBLIC_BASE" | grep -q '10\.78\.0\.9'; then
-  _ip=$(fp_resolve_public_host 2>/dev/null || echo "localhost")
-  PUBLIC_BASE="https://${_ip}/misp"
+  _host=$(fp_url_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")
+  _host=$(fp_normalize_host "$_host" 2>/dev/null || echo "$_host")
+  PUBLIC_BASE="https://${_host}/misp"
 fi
-# MISP attend une URL sans slash final dans la config interne
-PUBLIC_BASE="${PUBLIC_BASE%/}"
+# Normalise (évite https://https://…)
+PUBLIC_BASE="${PUBLIC_BASE#https://}"
+PUBLIC_BASE="${PUBLIC_BASE#http://}"
+PUBLIC_BASE="https://${PUBLIC_BASE%/}"
 
 CAKE="/var/www/MISP/app/Console/cake"
 if [ ! -x "$CAKE" ] && [ -f "$CAKE" ]; then

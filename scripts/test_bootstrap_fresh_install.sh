@@ -32,7 +32,7 @@ def host_default(k, ip):
     return {
         "PUBLIC_HOST": ip,
         "TIMESKETCH_EXTERNAL_URL": f"https://{ip}/timesketch",
-        "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp/",
+        "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp",
         "GRAFANA_ROOT_URL": f"https://{ip}/grafana/",
         "GRAFANA_DOMAIN": ip,
         "GRAFANA_ALLOWED_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
@@ -72,8 +72,20 @@ for key in PUBLIC_HOST GRAFANA_DOMAIN MISP_PUBLIC_BASE_URL; do
   val=$(grep "^${key}=" "$WORKDIR/.env" | cut -d= -f2-)
   case "$val" in
     *10.78.0.9*) echo "FAIL: $key contient encore 10.78.0.9 ($val)" >&2; exit 1 ;;
-    *"$TEST_IP"*) echo "PASS: $key=$val" ;;
-    *) echo "FAIL: $key inattendu ($val)" >&2; exit 1 ;;
+  esac
+  case "$key" in
+    MISP_PUBLIC_BASE_URL)
+      case "$val" in
+        https://"$TEST_IP"/misp|https://"$TEST_IP"/misp/) echo "PASS: $key=$val" ;;
+        *) echo "FAIL: $key inattendu ($val)" >&2; exit 1 ;;
+      esac
+      ;;
+    *)
+      case "$val" in
+        *"$TEST_IP"*) echo "PASS: $key=$val" ;;
+        *) echo "FAIL: $key inattendu ($val)" >&2; exit 1 ;;
+      esac
+      ;;
   esac
 done
 

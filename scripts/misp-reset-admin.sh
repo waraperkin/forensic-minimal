@@ -110,8 +110,13 @@ if docker exec "$CONTAINER" test -f /scripts/misp-configure-public-url.sh 2>/dev
     . "$ROOT/scripts/lib/host-ip.sh"
     fp_load_env_public_host 2>/dev/null || true
   fi
-  _host="${PUBLIC_HOSTNAME:-${PUBLIC_HOST:-$(fp_resolve_public_host 2>/dev/null || echo "localhost")}}"
+  _host="${PUBLIC_HOSTNAME:-${PUBLIC_HOST:-$(fp_url_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")}}"
+  _host=$(fp_normalize_host "$_host" 2>/dev/null || echo "$_host")
   export MISP_PUBLIC_BASE_URL="${MISP_PUBLIC_BASE_URL:-https://${_host}/misp}"
+  MISP_PUBLIC_BASE_URL="${MISP_PUBLIC_BASE_URL#https://}"
+  MISP_PUBLIC_BASE_URL="${MISP_PUBLIC_BASE_URL#http://}"
+  MISP_PUBLIC_BASE_URL="https://${MISP_PUBLIC_BASE_URL%/}"
+  export MISP_PUBLIC_BASE_URL
   docker exec -e "MISP_PUBLIC_BASE_URL=${MISP_PUBLIC_BASE_URL}" "$CONTAINER" \
     /scripts/misp-configure-public-url.sh 2>/dev/null \
     && echo "[misp-reset] MISP.baseurl → ${MISP_PUBLIC_BASE_URL}" \

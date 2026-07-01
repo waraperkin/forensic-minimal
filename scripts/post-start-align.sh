@@ -10,12 +10,17 @@ if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
   fp_load_env_public_host 2>/dev/null || true
 fi
 
-HOST=$(fp_cert_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")
+HOST=$(fp_url_identity 2>/dev/null || fp_cert_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")
+HOST=$(fp_normalize_host "$HOST" 2>/dev/null || echo "$HOST")
 export PUBLIC_HOST="${PUBLIC_HOST:-$HOST}"
+export HELK_KIBANA_PUBLIC_URL="https://${HOST}/helk/kibana"
+export MISP_PUBLIC_BASE_URL="$(fp_misp_public_base_url 2>/dev/null || echo "https://${HOST}/misp")"
 
 log() { echo "[post-start] $*"; }
 
-log "Hôte public : $HOST"
+log "Hôte URL public : $HOST"
+log "MISP_PUBLIC_BASE_URL=${MISP_PUBLIC_BASE_URL}"
+log "HELK_KIBANA_PUBLIC_URL=${HELK_KIBANA_PUBLIC_URL}"
 
 # MISP — attendre HTTP puis aligner baseurl + credentials
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^forensic-misp$'; then

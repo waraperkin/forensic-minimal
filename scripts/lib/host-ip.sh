@@ -34,6 +34,12 @@ _fp_aws_public_ipv4() {
   _fp_aws_metadata "public-ipv4" "$token"
 }
 
+_fp_aws_public_hostname() {
+  local token
+  token=$(_fp_aws_imds_token)
+  _fp_aws_metadata "public-hostname" "$token"
+}
+
 _fp_aws_local_ipv4() {
   local token
   token=$(_fp_aws_imds_token)
@@ -164,13 +170,84 @@ _fp_is_hostname() {
   [[ "${1:-}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]
 }
 
-# Identité TLS/URL : nom de domaine (proxy entreprise) ou IP publique.
-fp_cert_identity() {
-  if [ -n "${PUBLIC_HOSTNAME:-}" ] && ! _fp_is_placeholder_host "$PUBLIC_HOSTNAME"; then
-    echo "$PUBLIC_HOSTNAME"
+# Retire schéma / slash parasite (évite https://https://… dans MISP / VR).
+fp_normalize_host() {
+  local h="${1:-}"
+  h="${h#https://}"
+  h="${h#http://}"
+  h="${h%%/*}"
+  h="${h%/}"
+  echo "$h"
+}
+
+# URL publique MISP sans slash final (convention CakePHP MISP.baseurl).
+fp_misp_public_base_url() {
+  local host
+  host=$(fp_url_identity 2>/dev/null || echo "localhost")
+  host=$(fp_normalize_host "$host")
+  echo "https://${host}/misp"
+}
+
+# IP publique AWS (certificat SAN) — indépendant du hostname navigateur.
+fp_detect_public_ip() {
+  local aws_pub="" routed="" aws_local="" first=""
+  aws_pub=$(_fp_aws_public_ipv4)
+  if _fp_is_ipv4 "$aws_pub"; then
+    echo "$aws_pub"
     return 0
   fi
-  fp_resolve_public_host 2>/dev/null || echo "127.0.0.1"
+  fp_load_env_public_host 2>/dev/null || true
+  if [ -n "${PUBLIC_HOST:-}" ] && _fp_is_ipv4 "$PUBLIC_HOST"; then
+    echo "$PUBLIC_HOST"
+    return 0
+  fi
+  routed=$(_fp_pick_routable_ipv4_from_hostname || true)
+  if _fp_is_ipv4 "$routed"; then
+    echo "$routed"
+    return 0
+  fi
+  aws_local=$(_fp_aws_local_ipv4)
+  if _fp_is_ipv4 "$aws_local"; then
+    echo "$aws_local"
+    return 0
+  fi
+  first=$(hostname -I 2>/dev/null | awk '{print $1}')
+  if _fp_is_ipv4 "$first"; then
+    echo "$first"
+    return 0
+  fi
+  echo "127.0.0.1"
+  return 1
+}
+
+# Hôte utilisé dans les URLs navigateur (TLS, MISP, VR, Kibana).
+# AWS : préfère le DNS public EC2 (ec2-…compute.amazonaws.com) à l'IP nue.
+fp_url_identity() {
+  local aws_host="" env_host=""
+  if [ -n "${PUBLIC_HOSTNAME:-}" ] && ! _fp_is_placeholder_host "$PUBLIC_HOSTNAME"; then
+    fp_normalize_host "$PUBLIC_HOSTNAME"
+    return 0
+  fi
+  fp_load_env_public_host 2>/dev/null || true
+  if [ -n "${PUBLIC_HOST:-}" ] && ! _fp_is_placeholder_host "$PUBLIC_HOST"; then
+    env_host=$(fp_normalize_host "$PUBLIC_HOST")
+    if _fp_is_hostname "$env_host"; then
+      echo "$env_host"
+      return 0
+    fi
+  fi
+  aws_host=$(_fp_aws_public_hostname)
+  aws_host=$(fp_normalize_host "$aws_host")
+  if [ -n "$aws_host" ] && _fp_is_hostname "$aws_host"; then
+    echo "$aws_host"
+    return 0
+  fi
+  fp_detect_public_host 2>/dev/null || echo "127.0.0.1"
+}
+
+# Identité TLS/URL : alias de fp_url_identity.
+fp_cert_identity() {
+  fp_url_identity 2>/dev/null || echo "127.0.0.1"
 }
 
 _fp_cert_san_contains_identity() {

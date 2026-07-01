@@ -372,6 +372,7 @@ bash scripts/test_host_ip.sh
 python3 scripts/test_bootstrap_env_host.py
 bash scripts/test_nginx_config.sh
 bash scripts/test_bootstrap_fresh_install.sh   # simule une install fraîche (IP fictive)
+bash scripts/test_proxy_subpath_config.sh    # HELK/MISP/VR proxy (anti redirect loop)
 bash scripts/test_tools_access.sh              # MISP / HELK / VR / santé (VM démarrée)
 bash scripts/verify-platform-ready.sh          # portail + 11 outils via HTTPS (VM démarrée)
 ```
@@ -433,7 +434,8 @@ python3 scripts/opensearch_siem_full_verify.py
 | MISP login boucle / CSRF | `bash scripts/misp-configure-host.sh` puis recharger `/misp/` |
 | HELK ou Velociraptor 502 | `bash scripts/setup-sidecars.sh` puis `docker compose up -d --force-recreate nginx` |
 | Velociraptor redirect vers mauvaise IP | `PUBLIC_HOST=<ip> bash velociraptor/scripts/generate-config.sh` puis recréer sidecar VR |
-| Proxy entreprise bloque l'IP | Utiliser `PUBLIC_HOSTNAME` + `./scripts/setup-public-access.sh` (voir section dédiée) |
+| HELK / VR boucle de redirection | `bash scripts/post-start-align.sh` puis recharger — URLs alignées sur le DNS EC2 (`fp_url_identity`) |
+| MISP « ERR_NAME_NOT_RESOLVED https » | `bash scripts/misp-configure-host.sh` — baseurl mal formée (double `https://`) |
 | Certificat navigateur refusé | Accepter l’exception ou `./forensic.sh tls` |
 | OpenSearch cluster red | `./forensic.sh fix-opensearch` |
 | Port déjà utilisé | `./forensic.sh full-stop` sur l’autre stack, ou libérer le port |
