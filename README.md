@@ -327,6 +327,43 @@ docker logs velociraptor-server --tail 30 2>/dev/null || true
 
 ---
 
+## Accès par IP (défaut) et Palo Alto
+
+Par défaut la plateforme utilise **`https://<IP-publique>/`** (pas le DNS EC2). Le bootstrap détecte l'IP via IMDS AWS.
+
+```bash
+./forensic.sh urls                    # affiche l'IP détectée
+bash scripts/post-start-align.sh      # aligne MISP/HELK/VR + pages d'identité
+bash scripts/print-paloalto-allowlist-guide.sh   # guide IT / firewall
+```
+
+### Pages d'identification (crawlers URL filtering)
+
+Après `post-start-align`, ces URLs sont servies sans authentification :
+
+| URL | Rôle |
+|-----|------|
+| `https://<IP>/site-info.html` | Description SOC/DFIR (mots-clés sécurité) |
+| `https://<IP>/robots.txt` | Autorise les crawlers |
+| `https://<IP>/.well-known/security.txt` | Contact sécurité (RFC 9116) |
+
+Variables `.env` : `FP_SITE_ORG_NAME`, `FP_SITE_DESCRIPTION`, `FP_SITE_CONTACT_EMAIL`.
+
+### Palo Alto « Uncategorized » / « Unknown »
+
+**Limite importante :** PAN-DB catégorise surtout les **noms de domaine**. Une **IP AWS nue** reste souvent « unknown » — le serveur ne peut pas forcer la catégorie à distance.
+
+**Actions efficaces (par ordre de fiabilité) :**
+
+1. **Custom URL Category** sur le firewall (admin PA) — ajouter l'IP au profil SOC  
+2. **Allowlist** destination `IP:443` pour le groupe analystes  
+3. **Recatégorisation** : https://urlfiltering.paloaltonetworks.com/ avec `https://<IP>/site-info.html`  
+4. **Domaine interne** (si IT refuse l'IP) : `PUBLIC_HOSTNAME=... ./scripts/setup-public-access.sh`
+
+Le DNS EC2 (`ec2-…amazonaws.com`) est **redirigé automatiquement vers l'IP** pour éviter les boucles de redirection.
+
+---
+
 ## Accès derrière proxy d'entreprise (PROMADOR / Zscaler)
 
 Les proxys d'entreprise bloquent souvent les sites en **`https://<IP>/`** (catégorie *Uncategorized* / IP nue), alors qu'un **nom de domaine** peut être autorisé par IT.
@@ -434,8 +471,10 @@ python3 scripts/opensearch_siem_full_verify.py
 | MISP login boucle / CSRF | `bash scripts/misp-configure-host.sh` puis recharger `/misp/` |
 | HELK ou Velociraptor 502 | `bash scripts/setup-sidecars.sh` puis `docker compose up -d --force-recreate nginx` |
 | Velociraptor redirect vers mauvaise IP | `PUBLIC_HOST=<ip> bash velociraptor/scripts/generate-config.sh` puis recréer sidecar VR |
-| HELK / VR boucle de redirection | `bash scripts/post-start-align.sh` puis recharger — URLs alignées sur le DNS EC2 (`fp_url_identity`) |
-| MISP « ERR_NAME_NOT_RESOLVED https » | `bash scripts/misp-configure-host.sh` — baseurl mal formée (double `https://`) |
+| HELK / VR boucle de redirection | `bash scripts/post-start-align.sh` — URLs alignées sur l'**IP** |
+| MISP « ERR_NAME_NOT_RESOLVED https » | `bash scripts/misp-configure-host.sh` |
+| Palo Alto bloque l'IP (Uncategorized) | `bash scripts/print-paloalto-allowlist-guide.sh` |
+| Proxy entreprise bloque l'IP | Custom URL category PA **ou** `PUBLIC_HOSTNAME` + `setup-public-access.sh` |
 | Certificat navigateur refusé | Accepter l’exception ou `./forensic.sh tls` |
 | OpenSearch cluster red | `./forensic.sh fix-opensearch` |
 | Port déjà utilisé | `./forensic.sh full-stop` sur l’autre stack, ou libérer le port |

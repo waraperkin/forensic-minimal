@@ -53,7 +53,8 @@ assert_ipv4 "fp_detect_public_host" "$out"
 
 # Normalisation URL
 assert_eq "fp_normalize_host strip https" "$(fp_normalize_host 'https://ec2.example.com/path')" "ec2.example.com"
-assert_eq "fp_misp_public_base_url" "$(PUBLIC_HOSTNAME=lab.test fp_misp_public_base_url)" "https://lab.test/misp"
+assert_eq "fp_misp_public_base_url (IP)" "$(PUBLIC_HOST=203.0.113.50 PUBLIC_HOSTNAME= fp_misp_public_base_url)" "https://203.0.113.50/misp"
+assert_eq "fp_url_identity IP mode" "$(PUBLIC_HOST=203.0.113.50 PUBLIC_HOSTNAME= fp_url_identity)" "203.0.113.50"
 
 echo ""
 echo "Résultat: $pass pass, $fail fail"

@@ -144,6 +144,9 @@ _fp_patch_nginx_server_name() {
 # Charge PUBLIC_HOST depuis .env si présent (sans écraser l'environnement courant).
 fp_load_env_public_host() {
   local root="${DIR:-.}" line key val
+  if [ -n "${PUBLIC_HOST:-}" ] && ! _fp_is_placeholder_host "$PUBLIC_HOST"; then
+    return 0
+  fi
   [ -f "$root/.env" ] || return 1
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in "#"*|"") continue ;; esac
@@ -221,33 +224,47 @@ fp_detect_public_ip() {
 }
 
 # Hôte utilisé dans les URLs navigateur (TLS, MISP, VR, Kibana).
-# AWS : préfère le DNS public EC2 (ec2-…compute.amazonaws.com) à l'IP nue.
+# Par défaut : IP publique AWS. PUBLIC_HOSTNAME seulement si explicitement défini.
 fp_url_identity() {
-  local aws_host="" env_host=""
+  local ph=""
   if [ -n "${PUBLIC_HOSTNAME:-}" ] && ! _fp_is_placeholder_host "$PUBLIC_HOSTNAME"; then
     fp_normalize_host "$PUBLIC_HOSTNAME"
     return 0
   fi
   fp_load_env_public_host 2>/dev/null || true
-  if [ -n "${PUBLIC_HOST:-}" ] && ! _fp_is_placeholder_host "$PUBLIC_HOST"; then
-    env_host=$(fp_normalize_host "$PUBLIC_HOST")
-    if _fp_is_hostname "$env_host"; then
-      echo "$env_host"
-      return 0
-    fi
-  fi
-  aws_host=$(_fp_aws_public_hostname)
-  aws_host=$(fp_normalize_host "$aws_host")
-  if [ -n "$aws_host" ] && _fp_is_hostname "$aws_host"; then
-    echo "$aws_host"
+  ph=$(fp_normalize_host "${PUBLIC_HOST:-}" 2>/dev/null || true)
+  if [ -n "$ph" ] && _fp_is_ipv4 "$ph"; then
+    echo "$ph"
     return 0
   fi
-  fp_detect_public_host 2>/dev/null || echo "127.0.0.1"
+  fp_detect_public_ip 2>/dev/null || fp_detect_public_host 2>/dev/null || echo "127.0.0.1"
 }
 
-# Identité TLS/URL : alias de fp_url_identity.
+# Identité TLS : IP par défaut (accès https://<IP>/), domaine si PUBLIC_HOSTNAME renseigné.
 fp_cert_identity() {
   fp_url_identity 2>/dev/null || echo "127.0.0.1"
+}
+
+# Force PUBLIC_HOST=.env sur l'IP (corrige un ancien bootstrap DNS EC2).
+fp_align_env_public_ip() {
+  local root="${DIR:-.}" ip="" current=""
+  ip=$(fp_detect_public_ip 2>/dev/null || true)
+  _fp_is_ipv4 "$ip" || return 0
+  [ -f "$root/.env" ] || return 0
+  current=$(grep -m1 '^PUBLIC_HOST=' "$root/.env" 2>/dev/null | cut -d= -f2- || true)
+  current=$(fp_normalize_host "$current" 2>/dev/null || true)
+  if [ "$current" = "$ip" ]; then
+    export PUBLIC_HOST="$ip"
+    return 0
+  fi
+  if _fp_is_hostname "$current" 2>/dev/null || [ "$current" != "$ip" ]; then
+    if grep -q '^PUBLIC_HOST=' "$root/.env"; then
+      sed -i "s/^PUBLIC_HOST=.*/PUBLIC_HOST=${ip}/" "$root/.env"
+    else
+      echo "PUBLIC_HOST=${ip}" >> "$root/.env"
+    fi
+    export PUBLIC_HOST="$ip"
+  fi
 }
 
 _fp_cert_san_contains_identity() {
