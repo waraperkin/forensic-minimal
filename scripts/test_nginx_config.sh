@@ -42,6 +42,11 @@ if ! grep -q 'location = /site-info.html' "$CONF"; then
   fail=1
 fi
 
+if ! grep -q '/etc/nginx/ssl/forensic.crt' "$CONF"; then
+  echo "FAIL: nginx doit utiliser /etc/nginx/ssl/forensic.crt (modèle fp-final2)" >&2
+  fail=1
+fi
+
 if ! grep -q 'include /etc/nginx/generated/ec2-dns-redirect.conf' "$CONF"; then
   echo "FAIL: include redirect DNS EC2 absent" >&2
   fail=1

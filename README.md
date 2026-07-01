@@ -342,7 +342,7 @@ cd forensic-minimal
 # Security Group AWS : TCP 80 + 443 ouverts
 ```
 
-> **Note :** le dépôt `fp-final2` (référence lab interne) n'est pas modifié — `forensic-minimal` reprend le modèle « une IP partout » (comme `10.78.0.9` au lab) avec détection AWS automatique.
+> **Note :** le dépôt `fp-final2` (référence lab, lecture seule) utilise un certificat **CN=forensic-platform** avec l’**IP publique en SAN** — même modèle que `forensic-minimal` depuis la v2.1 (accès `https://<IP>/login.html`).
 
 ### Pages d'identification (crawlers URL filtering)
 

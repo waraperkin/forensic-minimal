@@ -1575,7 +1575,11 @@ for line in lines:
         existing[m.group(1)] = parse_val(m.group(2))
     order.append(line)
 
-host = (existing.get("PUBLIC_HOSTNAME") or "").strip() or url_host or ip
+access_mode = (existing.get("FP_ACCESS_MODE") or "ip").strip().lower()
+if access_mode == "ip":
+    host = url_host or ip
+else:
+    host = (existing.get("PUBLIC_HOSTNAME") or "").strip() or url_host or ip
 
 DEFAULTS = {
     "POSTGRES_USER": "forensic",
@@ -1847,36 +1851,31 @@ _fp_bootstrap_cert_dirs() {
 }
 
 _fp_bootstrap_generate_tls() {
-  local root="${DIR:-.}" ip rc=0 need_server=0
-  ip=$(fp_cert_identity 2>/dev/null || fp_detect_public_ip 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  local root="${DIR:-.}" ip rc=0 need=0
+  ip=$(fp_detect_public_ip 2>/dev/null || fp_url_identity 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 
   if [ ! -f "$root/nginx/certs/ca/ca.crt" ] || [ ! -f "$root/nginx/certs/ca/ca.key" ]; then
     info "Génération CA interne (openssl)..."
     bash "$root/scripts/generate_ca.sh" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
   fi
 
-  if [ ! -f "$root/nginx/certs/server/server.crt" ] || [ ! -f "$root/nginx/certs/server/server.key" ]; then
-    need_server=1
-  elif ! _fp_cert_san_contains_ip "$root/nginx/certs/server/server.crt" "$ip"; then
-    info "Certificat serveur SAN ≠ $ip — régénération..."
-    need_server=1
-  fi
-  if [ "$need_server" -eq 1 ]; then
-    info "Génération certificat serveur Nginx (SAN IP=$ip)..."
-    bash "$root/scripts/generate_server_cert.sh" "$ip" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
-  fi
-
   if [ ! -f "$root/config/nginx/ssl/forensic.crt" ] || [ ! -f "$root/config/nginx/ssl/forensic.key" ]; then
-    info "Génération certificat SSL portails (config/nginx/ssl)..."
-    bash "$root/scripts/generate-ssl-cert.sh" "$ip" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
+    need=1
   elif ! _fp_cert_san_contains_ip "$root/config/nginx/ssl/forensic.crt" "$ip"; then
-    info "Certificat portails SAN ≠ $ip — régénération..."
-    rm -f "$root/config/nginx/ssl/forensic.crt" "$root/config/nginx/ssl/forensic.key" \
-      "$root/config/nginx/ssl/fingerprint.txt" 2>/dev/null || true
-    bash "$root/scripts/generate-ssl-cert.sh" "$ip" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
+    info "Certificat forensic-platform SAN ≠ $ip — régénération..."
+    need=1
+  fi
+  if [ "$need" -eq 1 ]; then
+    info "Génération certificat TLS (CN=forensic-platform, SAN IP=$ip)..."
+    bash "$root/scripts/generate_server_cert.sh" "$ip" >> "$FP_LOG_INSTALL" 2>&1 || rc=1
+  else
+    mkdir -p "$root/nginx/certs/server"
+    cp -f "$root/config/nginx/ssl/forensic.crt" "$root/nginx/certs/server/server.crt" 2>/dev/null || true
+    cp -f "$root/config/nginx/ssl/forensic.key" "$root/nginx/certs/server/server.key" 2>/dev/null || true
   fi
 
-  [ "$rc" -eq 0 ] && ok "Certificats TLS générés/vérifiés (IP=$ip)" || warn "Génération TLS partielle — voir logs/forensic_install.log"
+  [ "$rc" -eq 0 ] && ok "Certificats TLS générés/vérifiés (forensic-platform + IP=$ip)" \
+    || warn "Génération TLS partielle — voir logs/forensic_install.log"
   return "$rc"
 }
 
@@ -1921,9 +1920,9 @@ _fp_bootstrap_verify_nginx_tls() {
   done
 
   if [ -f "$root/config/nginx/conf.d/forensic.conf" ]; then
-    if grep -q 'ssl_certificate[[:space:]]\+/etc/nginx/certs/server/server.crt' \
+    if grep -q 'ssl_certificate[[:space:]]\+/etc/nginx/ssl/forensic.crt' \
       "$root/config/nginx/conf.d/forensic.conf" 2>/dev/null; then
-      ok "nginx/conf.d/forensic.conf → chemins TLS cohérents (/etc/nginx/certs/server/*)"
+      ok "nginx/conf.d/forensic.conf → TLS forensic-platform (/etc/nginx/ssl/forensic.crt)"
     else
       warn "nginx/conf.d/forensic.conf — vérifier ssl_certificate / ssl_certificate_key"
     fi

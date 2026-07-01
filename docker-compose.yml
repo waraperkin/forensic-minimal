@@ -1181,8 +1181,7 @@ services:
       - ./config/nginx/generated:/etc/nginx/generated:ro
       - ./config/nginx/static:/etc/nginx/static:ro
       - ./nginx/certs:/etc/nginx/certs:ro
-      - ./config/nginx/ssl/forensic.crt:/etc/nginx/ssl/forensic.crt:ro
-      - ./config/nginx/ssl/forensic.key:/etc/nginx/ssl/forensic.key:ro
+      - ./config/nginx/ssl:/etc/nginx/ssl:ro
     ports:
       - "80:80"
       - "443:443"

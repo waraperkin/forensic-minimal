@@ -33,17 +33,16 @@ step(){ echo -e "\n${BLUE}━━━ $* ━━━${NC}"; }
 #  Point d'entrée : ./forensic.sh tls  (ou appelé depuis pre_start)
 # ──────────────────────────────────────────────────────────────
 setup_tls() {
-  # Identité publique : PUBLIC_HOSTNAME (domaine) ou IP (AWS IMDS / routable)
-  local IDENTITY
-  IDENTITY=$(fp_cert_identity 2>/dev/null || true)
-  if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "127.0.0.1" ]; then
-    IDENTITY=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+  local IP
+  IP=$(fp_detect_public_ip 2>/dev/null || fp_url_identity 2>/dev/null || true)
+  if [ -z "$IP" ] || [ "$IP" = "127.0.0.1" ]; then
+    IP=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
   fi
-  if [ -z "$IDENTITY" ]; then
-    err "[TLS] Impossible de détecter l'hôte (fp_cert_identity / hostname -I)"
+  if [ -z "$IP" ]; then
+    err "[TLS] Impossible de détecter l'IP publique (fp_detect_public_ip / hostname -I)"
     return 1
   fi
-  echo "[TLS] Hôte détecté : $IDENTITY"
+  echo "[TLS] IP publique : $IP (certificat CN=forensic-platform, modèle fp-final2)"
 
   if [ ! -f "$DIR/nginx/certs/ca/ca.crt" ]; then
     echo "[TLS] CA interne absente — génération..."
@@ -52,22 +51,22 @@ setup_tls() {
     echo "[TLS] CA interne déjà présente."
   fi
 
-  local need_server_cert=0
-  if [ ! -f "$DIR/nginx/certs/server/server.crt" ] \
-    || [ ! -f "$DIR/nginx/certs/server/server.key" ]; then
-    need_server_cert=1
-  elif ! _fp_cert_san_contains_identity "$DIR/nginx/certs/server/server.crt" "$IDENTITY"; then
-    echo "[TLS] Certificat serveur SAN ≠ $IDENTITY — régénération..."
-    need_server_cert=1
+  local need_cert=0
+  if [ ! -f "$DIR/config/nginx/ssl/forensic.crt" ] \
+    || [ ! -f "$DIR/config/nginx/ssl/forensic.key" ]; then
+    need_cert=1
+  elif ! _fp_cert_san_contains_identity "$DIR/config/nginx/ssl/forensic.crt" "$IP"; then
+    echo "[TLS] Certificat SAN ≠ $IP — régénération..."
+    need_cert=1
   fi
-  if [ "$need_server_cert" -eq 1 ]; then
-    echo "[TLS] Génération certificat serveur pour $IDENTITY..."
-    bash "$DIR/scripts/generate_server_cert.sh" "$IDENTITY"
+  if [ "$need_cert" -eq 1 ]; then
+    echo "[TLS] Génération certificat forensic-platform (SAN IP=$IP)..."
+    bash "$DIR/scripts/generate_server_cert.sh" "$IP"
   else
-    echo "[TLS] Certificat serveur déjà présent (SAN=$IDENTITY)."
+    echo "[TLS] Certificat forensic-platform déjà présent (SAN IP=$IP)."
   fi
 
-  echo "[TLS] Mise à jour des config.json avec soc_base_url=https://$IDENTITY"
+  echo "[TLS] Mise à jour des config.json avec soc_base_url=https://$IP"
   _tls_update_config_json() {
     local cfg="$1"
     if [ ! -f "$cfg" ]; then
@@ -75,10 +74,10 @@ setup_tls() {
       return 0
     fi
     if command -v jq >/dev/null 2>&1; then
-      jq --arg url "https://${IDENTITY}" '.soc_base_url = $url' "$cfg" > "${cfg}.tmp"
+      jq --arg url "https://${IP}" '.soc_base_url = $url' "$cfg" > "${cfg}.tmp"
       mv "${cfg}.tmp" "$cfg"
     else
-      python3 - "$cfg" "$IDENTITY" <<'PY'
+      python3 - "$cfg" "$IP" <<'PY'
 import json, sys
 path, ip = sys.argv[1], sys.argv[2]
 with open(path, encoding="utf-8") as f:
@@ -94,10 +93,10 @@ PY
   _tls_update_config_json "$DIR/portal-it/public/config.json"
 
   echo "[TLS] Mise à jour nginx (server_name catch-all + maps Grafana)..."
-  _fp_patch_nginx_server_name "$DIR/config/nginx/conf.d/forensic.conf" "$IDENTITY"
-  _fp_patch_nginx_grafana_maps "$DIR/config/nginx/conf.d/forensic.conf" "$IDENTITY"
+  _fp_patch_nginx_server_name "$DIR/config/nginx/conf.d/forensic.conf" "$IP"
+  _fp_patch_nginx_grafana_maps "$DIR/config/nginx/conf.d/forensic.conf" "$IP"
   if [ -f "$DIR/nginx/nginx.conf" ]; then
-    sed -i "s/^[[:space:]]*# server_name .*/# server_name ${IDENTITY};/" "$DIR/nginx/nginx.conf" 2>/dev/null || true
+    sed -i "s/^[[:space:]]*# server_name .*/# server_name ${IP};/" "$DIR/nginx/nginx.conf" 2>/dev/null || true
   fi
 
   echo "[TLS] Redémarrage Nginx + portails CERT/IT..."
@@ -115,16 +114,16 @@ PY
   docker exec forensic-nginx nginx -s reload 2>/dev/null || true
 
   echo "[TLS] Validation du certificat..."
-  if curl -vk --max-time 15 "https://${IDENTITY}/login.html" >/dev/null 2>&1; then
+  if curl -vk --max-time 15 "https://${IP}/login.html" >/dev/null 2>&1; then
     echo "[TLS] OK — TLS opérationnel."
     return 0
   fi
-  curl -vk --max-time 15 "https://${IDENTITY}/login.html" 2>&1 | tail -30 || true
-  if curl -sfk --max-time 15 "https://${IDENTITY}/login.html" >/dev/null 2>&1; then
+  curl -vk --max-time 15 "https://${IP}/login.html" 2>&1 | tail -30 || true
+  if curl -sfk --max-time 15 "https://${IP}/login.html" >/dev/null 2>&1; then
     echo "[TLS] OK — TLS opérationnel (certificat auto-signé — confiance CA locale requise pour curl -f)."
     return 0
   fi
-  err "[TLS] Échec validation HTTPS sur https://${IDENTITY}/"
+  err "[TLS] Échec validation HTTPS sur https://${IP}/"
   return 1
 }
 
@@ -177,48 +176,25 @@ pre_start() {
   fi
   setup_tls || warn "setup_tls: échec partiel — relancer ./forensic.sh tls"
 
-  # Certificat SSL ─────────────────────────────────────────────
+  # Certificat SSL (modèle fp-final2 : CN=forensic-platform + IP en SAN) ──
   local SSL_DIR="$DIR/config/nginx/ssl"
   mkdir -p "$SSL_DIR"
-  local need_cert=0
-  if [ ! -f "$SSL_DIR/forensic.crt" ]; then
-    need_cert=1
+  local LOCAL_IP need_ssl=0
+  LOCAL_IP=$(fp_detect_public_ip 2>/dev/null || fp_url_identity 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  if [ ! -f "$SSL_DIR/forensic.crt" ] || [ ! -f "$SSL_DIR/forensic.key" ]; then
+    need_ssl=1
   elif ! openssl x509 -checkend 2592000 -noout -in "$SSL_DIR/forensic.crt" >/dev/null 2>&1; then
-    need_cert=1
+    need_ssl=1
     warn "Certificat SSL expiré — régénération"
+  elif ! _fp_cert_san_contains_identity "$SSL_DIR/forensic.crt" "$LOCAL_IP" 2>/dev/null; then
+    need_ssl=1
+    warn "Certificat SSL SAN ≠ $LOCAL_IP — régénération"
   fi
 
-  if [ "$need_cert" -eq 1 ]; then
-    info "Génération certificat SSL RSA-4096 (365 jours)..."
-    local LOCAL_IP
-    LOCAL_IP=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
-    cat > /tmp/ssl.cnf << SSLEOF
-[req]
-distinguished_name=req_dn
-x509_extensions=v3_req
-prompt=no
-[req_dn]
-C=FR
-O=Forensic Platform CERT
-CN=forensic-platform
-[v3_req]
-keyUsage=critical,digitalSignature,keyEncipherment
-extendedKeyUsage=serverAuth
-subjectAltName=@alt
-[alt]
-DNS.1=localhost
-DNS.2=forensic-platform
-IP.1=127.0.0.1
-IP.2=${LOCAL_IP}
-SSLEOF
-    openssl req -x509 -newkey rsa:4096 \
-      -keyout "$SSL_DIR/forensic.key" \
-      -out    "$SSL_DIR/forensic.crt" \
-      -days 365 -nodes -config /tmp/ssl.cnf >/dev/null 2>&1
-    openssl x509 -noout -fingerprint -sha256 \
-      -in "$SSL_DIR/forensic.crt" 2>/dev/null \
-      | sed 's/SHA256 Fingerprint=//' > "$SSL_DIR/fingerprint.txt"
-    ok "SSL généré — $(cat "$SSL_DIR/fingerprint.txt")"
+  if [ "$need_ssl" -eq 1 ]; then
+    info "Génération certificat forensic-platform (SAN IP=$LOCAL_IP)..."
+    bash "$DIR/scripts/generate_server_cert.sh" "$LOCAL_IP"
+    ok "SSL généré — $(cat "$SSL_DIR/fingerprint.txt" 2>/dev/null || echo 'fingerprint OK')"
   else
     ok "SSL valide — $(cat "$SSL_DIR/fingerprint.txt" 2>/dev/null || echo 'fingerprint OK')"
   fi

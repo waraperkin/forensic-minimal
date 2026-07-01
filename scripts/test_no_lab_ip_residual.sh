@@ -18,6 +18,7 @@ check_file() {
 check_file "velociraptor server.config" "$ROOT/velociraptor/config/server.config.yaml"
 check_file "docker-compose.yml" "$ROOT/docker-compose.yml"
 check_file "forensic.conf" "$ROOT/config/nginx/conf.d/forensic.conf"
+check_file "velociraptor api.config" "$ROOT/velociraptor/config/api.config.yaml"
 
 if [ -f "$ROOT/.env" ] && grep -qE "^PUBLIC_HOST=${LAB_IP}" "$ROOT/.env" 2>/dev/null; then
   echo "FAIL: .env PUBLIC_HOST = 10.78.0.9" >&2

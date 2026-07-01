@@ -68,5 +68,5 @@ client_private_key: |
   vKKnDADF7KfqkWpyAwr7sJUZJbD7nH2wVx5h8FRkO50Mha3vAGTc2P3CqAPYJJsD
   J8I3DnSGJgEkUflntAR+M5JieU/L9Diah6lfOHk19kPqvlqrE/88
   -----END RSA PRIVATE KEY-----
-api_connection_string: 10.78.0.9:8002
+api_connection_string: velociraptor-server:8002
 name: forensic-bridge

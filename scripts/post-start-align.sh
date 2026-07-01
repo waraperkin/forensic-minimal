@@ -49,11 +49,28 @@ else
   log "WARN forensic-misp absent"
 fi
 
-# Sidecars HELK / VR (recrée config VR + Kibana PUBLICBASEURL)
+# Sidecars HELK / VR (recrée config VR + Kibana PUBLICBASEURL + api.config bridge)
 if [ "${FP_SKIP_SIDECARS:-0}" != "1" ] && [ -x "$ROOT/scripts/setup-sidecars.sh" ]; then
   bash "$ROOT/scripts/setup-sidecars.sh" >> "${FP_LOG_START:-$ROOT/logs/forensic_start.log}" 2>&1 \
     && log "Sidecars HELK/VR OK" \
     || log "WARN setup-sidecars partiel"
+fi
+
+# Régénère api.config.yaml Velociraptor (évite 10.78.0.9 résiduel dans le bridge)
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^velociraptor-server$'; then
+  VR_ADMIN="${VELOCIRAPTOR_ADMIN_USER:-admin}"
+  VR_PASS="${VELOCIRAPTOR_ADMIN_PASSWORD:-F0r3ns1c_VR_2024!}"
+  docker exec velociraptor-server test -f /data/.admin_bootstrapped 2>/dev/null \
+    || docker exec velociraptor-server velociraptor --config /config/server.config.yaml \
+      user add --role administrator "$VR_ADMIN" "$VR_PASS" 2>/dev/null || true
+  if docker exec velociraptor-server velociraptor --config /config/server.config.yaml config api_client \
+    --name forensic-bridge --role administrator /tmp/api.config.yaml 2>/dev/null \
+    && docker cp velociraptor-server:/tmp/api.config.yaml "$ROOT/velociraptor/config/api.config.yaml" 2>/dev/null; then
+    log "Velociraptor api.config.yaml régénéré"
+    docker compose up -d --force-recreate velociraptor-bridge 2>/dev/null || true
+  else
+    log "WARN api.config.yaml — bridge utilisera server.config.yaml"
+  fi
 fi
 
 docker compose up -d --force-recreate helk-bridge velociraptor-bridge nginx 2>/dev/null \

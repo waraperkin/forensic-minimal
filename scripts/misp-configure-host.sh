@@ -17,7 +17,7 @@ if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
   fp_load_env_public_host 2>/dev/null || true
 fi
 
-HOST="${PUBLIC_HOSTNAME:-${PUBLIC_HOST:-$(fp_url_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")}}"
+HOST="$(fp_url_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")"
 HOST=$(fp_normalize_host "$HOST" 2>/dev/null || echo "$HOST")
 export MISP_PUBLIC_BASE_URL="${MISP_PUBLIC_BASE_URL:-$(fp_misp_public_base_url 2>/dev/null || echo "https://${HOST}/misp")}"
 # Normalise : une seule fois https://, pas de slash final
