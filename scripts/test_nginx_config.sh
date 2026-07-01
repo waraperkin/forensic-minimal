@@ -27,8 +27,13 @@ if grep -q 'default "https://10.78.0.9"' "$CONF"; then
   fail=1
 fi
 
-if grep -q 'upstream u_helk_kibana' "$CONF"; then
-  echo "FAIL: ancien bloc upstream statique HELK encore présent" >&2
+if ! grep -q 'set \$vr_bridge_upstream' "$CONF"; then
+  echo "FAIL: upstream Velociraptor bridge dynamique absent" >&2
+  fail=1
+fi
+
+if ! grep -q 'location = /helk {' "$CONF"; then
+  echo "FAIL: redirect /helk → /helk/kibana/ absent" >&2
   fail=1
 fi
 

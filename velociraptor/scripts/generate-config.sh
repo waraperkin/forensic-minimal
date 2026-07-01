@@ -8,7 +8,7 @@ if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
   . "$ROOT/scripts/lib/host-ip.sh"
   fp_load_env_public_host 2>/dev/null || true
 fi
-PUBLIC_HOST="${PUBLIC_HOST:-$(fp_resolve_public_host 2>/dev/null || echo "localhost")}"
+PUBLIC_HOST="${PUBLIC_HOSTNAME:-${PUBLIC_HOST:-$(fp_resolve_public_host 2>/dev/null || echo "localhost")}}"
 DATA_DIR="/data"
 
 if [[ ! -x "$BIN" ]]; then
@@ -32,9 +32,11 @@ with open(path, encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
 
 cfg.setdefault("Client", {})["server_urls"] = [
-    f"https://{host}:8001/",
     f"https://{host}/velociraptor/",
 ]
+# Port 8001 direct (agents) — optionnel ; désactivé par défaut derrière nginx seul (AWS)
+if __import__("os").environ.get("FP_VR_DIRECT_FRONTEND", "").lower() in ("1", "true", "yes"):
+    cfg["Client"]["server_urls"].insert(0, f"https://{host}:8001/")
 cfg["GUI"]["bind_address"] = "0.0.0.0"
 cfg["GUI"]["bind_port"] = 8000
 cfg["Frontend"]["bind_address"] = "0.0.0.0"

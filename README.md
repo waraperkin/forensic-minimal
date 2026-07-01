@@ -287,7 +287,76 @@ Depuis le **portail CERT** : liens vers HELK, Velociraptor, OpenCTI, Timesketch,
 - **HELK** : Kibana hunting, règles Sigma, ingestion lab
 - **Velociraptor** : collecte endpoint, export vers la plateforme via bridge
 
-Scripts de setup sidecar : `scripts/helk_velociraptor_master_setup.sh`
+Scripts de setup sidecar : `scripts/setup-sidecars.sh` (automatique à chaque `full-start`) ou `scripts/helk_velociraptor_master_setup.sh` (setup complet lab).
+
+**URLs directes :**
+
+| Outil | URL |
+|-------|-----|
+| MISP | `https://<hôte>/misp/` |
+| HELK Kibana | `https://<hôte>/helk/kibana/` |
+| Velociraptor | `https://<hôte>/velociraptor/` |
+
+**Vérification après démarrage :**
+
+```bash
+bash scripts/test_tools_access.sh
+# ou avec BASE_URL explicite :
+BASE_URL=https://<hôte> bash scripts/test_tools_access.sh
+```
+
+**Si MISP / HELK / Velociraptor restent inaccessibles :**
+
+```bash
+# 1) Sidecars + config Velociraptor
+bash scripts/setup-sidecars.sh
+
+# 2) URL publique MISP (baseurl CakePHP)
+bash scripts/misp-configure-host.sh
+
+# 3) Recréer nginx + portails
+docker compose up -d --force-recreate nginx cert-portal it-portal
+
+# 4) Logs
+docker logs forensic-misp --tail 50
+docker logs forensic-nginx --tail 50
+docker logs helk-kibana --tail 30 2>/dev/null || true
+docker logs velociraptor-server --tail 30 2>/dev/null || true
+```
+
+---
+
+## Accès derrière proxy d'entreprise (PROMADOR / Zscaler)
+
+Les proxys d'entreprise bloquent souvent les sites en **`https://<IP>/`** (catégorie *Uncategorized* / IP nue), alors qu'un **nom de domaine** peut être autorisé par IT.
+
+### Solution recommandée : nom de domaine
+
+1. Créer un enregistrement DNS **A** : `forensic-lab.votre-entreprise.com` → Elastic IP AWS  
+2. Configurer la plateforme :
+
+```bash
+PUBLIC_HOSTNAME=forensic-lab.votre-entreprise.com ./scripts/setup-public-access.sh
+./forensic.sh -full-start
+```
+
+3. Demander à IT l'**allowlist** du domaine (plus simple qu'une IP).  
+4. Accéder via `https://forensic-lab.votre-entreprise.com/` (et non l'IP brute).
+
+Dans `.env`, `PUBLIC_HOSTNAME` force le SAN DNS du certificat et toutes les URLs (`MISP`, `Grafana`, `Velociraptor`, portails).
+
+### Pourquoi d'anciennes versions semblaient fonctionner
+
+Les versions antérieures utilisaient souvent un **nom d'hôte** ou un certificat reconnu, pas une IP nue. L'accès direct `https://54.x.x.x/` déclenche aujourd'hui le blocage *Blocked Website / Uncategorized* sur de nombreux proxys.
+
+### Alternatives
+
+| Option | Usage |
+|--------|--------|
+| VPN site-à-site AWS | Accès sans passer par le proxy navigateur |
+| Tunnel SSH | `ssh -L 8443:127.0.0.1:443 ec2-user@<ip>` → `https://localhost:8443/` |
+| Hotspot / réseau hors entreprise | Test rapide pour confirmer que la VM fonctionne |
+| Let's Encrypt | Après `PUBLIC_HOSTNAME`, certificat public reconnu (`certbot`) |
 
 ---
 
@@ -302,6 +371,7 @@ bash scripts/test_host_ip.sh
 python3 scripts/test_bootstrap_env_host.py
 bash scripts/test_nginx_config.sh
 bash scripts/test_bootstrap_fresh_install.sh   # simule une install fraîche (IP fictive)
+bash scripts/test_tools_access.sh              # MISP / HELK / VR / santé (VM démarrée)
 ```
 
 ### Tests intégrés au full-start
@@ -351,7 +421,10 @@ python3 scripts/opensearch_siem_full_verify.py
 |----------|--------|
 | Portail / outils inaccessibles depuis le navigateur (AWS) | Vérifier Security Group TCP 80/443 ; utiliser l’**IP publique** (`./forensic.sh urls`), pas l’IP privée EC2 |
 | URLs ou Grafana/MISP cassés (mauvaise IP) | `PUBLIC_HOST=<ip-publique> ./forensic.sh tls` puis `docker compose up -d --force-recreate nginx cert-portal it-portal grafana` |
-| `.env` contient encore `10.78.0.9` | Relancer `./forensic.sh -full-start` (patch automatique) |
+| MISP login boucle / CSRF | `bash scripts/misp-configure-host.sh` puis recharger `/misp/` |
+| HELK ou Velociraptor 502 | `bash scripts/setup-sidecars.sh` puis `docker compose up -d --force-recreate nginx` |
+| Velociraptor redirect vers mauvaise IP | `PUBLIC_HOST=<ip> bash velociraptor/scripts/generate-config.sh` puis recréer sidecar VR |
+| Proxy entreprise bloque l'IP | Utiliser `PUBLIC_HOSTNAME` + `./scripts/setup-public-access.sh` (voir section dédiée) |
 | Certificat navigateur refusé | Accepter l’exception ou `./forensic.sh tls` |
 | OpenSearch cluster red | `./forensic.sh fix-opensearch` |
 | Port déjà utilisé | `./forensic.sh full-stop` sur l’autre stack, ou libérer le port |

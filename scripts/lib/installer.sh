@@ -1519,14 +1519,14 @@ DEFAULTS = {
     "THEHIVE_ADMIN_LOGIN": "admin",
     "VELOCIRAPTOR_ADMIN_USER": "admin",
     "VELOCIRAPTOR_ADMIN_PASSWORD": "F0r3ns1c_VR_2024!",
-    "PUBLIC_HOST": ip,
-    "TIMESKETCH_EXTERNAL_URL": f"https://{ip}/timesketch",
-    "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp/",
-    "GRAFANA_ROOT_URL": f"https://{ip}/grafana/",
-    "GRAFANA_DOMAIN": ip,
-    "GRAFANA_ALLOWED_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
-    "GRAFANA_CSRF_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
-    "GRAFANA_CORS_ORIGIN": f"https://{ip},http://{ip},https://localhost,http://localhost",
+    "PUBLIC_HOST": host,
+    "TIMESKETCH_EXTERNAL_URL": f"https://{host}/timesketch",
+    "MISP_PUBLIC_BASE_URL": f"https://{host}/misp/",
+    "GRAFANA_ROOT_URL": f"https://{host}/grafana/",
+    "GRAFANA_DOMAIN": host,
+    "GRAFANA_ALLOWED_ORIGINS": f"https://{host},http://{host},https://localhost,http://localhost",
+    "GRAFANA_CSRF_ORIGINS": f"https://{host},http://{host},https://localhost,http://localhost",
+    "GRAFANA_CORS_ORIGIN": f"https://{host},http://{host},https://localhost,http://localhost",
 }
 
 CRITICAL = [
@@ -1585,6 +1585,8 @@ for line in lines:
         existing[m.group(1)] = parse_val(m.group(2))
     order.append(line)
 
+host = (existing.get("PUBLIC_HOSTNAME") or "").strip() or ip
+
 # Appliquer defaults + génération secrets pour valeurs vides
 for k, dv in DEFAULTS.items():
     if k not in existing or existing[k] == "":
@@ -1593,7 +1595,7 @@ for k, dv in DEFAULTS.items():
 # Toujours remplacer les placeholders IP lab (10.78.0.9) par l'IP détectée
 for k in HOST_KEYS:
     if should_patch_host(k, existing.get(k, "")):
-        existing[k] = host_default(k, ip)
+        existing[k] = host_default(k, host)
 
 for k in list(existing.keys()) + list(CRITICAL):
     if k not in existing:
@@ -1698,13 +1700,33 @@ _fp_bootstrap_patch_helk_lab_configs() {
   done
 }
 
+_fp_regenerate_velociraptor_config() {
+  local root="${DIR:-.}" host need=0
+  host=$(fp_cert_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")
+  local cfg="$root/velociraptor/config/server.config.yaml"
+  if [ ! -f "$cfg" ]; then
+    need=1
+  elif grep -q '10\.78\.0\.9' "$cfg" 2>/dev/null; then
+    need=1
+  elif ! grep -q "$host" "$cfg" 2>/dev/null; then
+    need=1
+  fi
+  if [ "$need" -eq 1 ] && [ -x "$root/velociraptor/scripts/generate-config.sh" ]; then
+    FP_VR_NGINX_ONLY=1 PUBLIC_HOST="$host" bash "$root/velociraptor/scripts/generate-config.sh" \
+      >> "${FP_LOG_INSTALL:-$root/logs/forensic_install.log}" 2>&1 \
+      && ok "Velociraptor config régénérée ($host)" \
+      || warn "Velociraptor config — voir logs/forensic_install.log"
+  fi
+}
+
 _fp_ensure_runtime_host_config() {
   local root="${DIR:-.}" ip
-  ip=$(fp_resolve_public_host 2>/dev/null || echo "127.0.0.1")
+  ip=$(fp_cert_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "127.0.0.1")
   _fp_bootstrap_env_complete 2>/dev/null || true
   if [ -x "$root/scripts/generate-timesketch-conf.sh" ]; then
     bash "$root/scripts/generate-timesketch-conf.sh" >> "${FP_LOG_INSTALL:-$root/logs/forensic_install.log}" 2>&1 || true
   fi
+  _fp_regenerate_velociraptor_config
   for cfg in "$root/portal-cert/public/config.json" "$root/portal-it/public/config.json"; do
     [ -f "$cfg" ] || continue
     if grep -q '10\.78\.0\.9' "$cfg" 2>/dev/null || grep -q '"soc_base_url": ""' "$cfg" 2>/dev/null; then

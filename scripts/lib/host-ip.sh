@@ -158,3 +158,22 @@ fp_resolve_public_host() {
   fp_load_env_public_host 2>/dev/null || true
   fp_detect_public_host 2>/dev/null || echo "127.0.0.1"
 }
+
+_fp_is_hostname() {
+  _fp_is_ipv4 "${1:-}" && return 1
+  [[ "${1:-}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]
+}
+
+# Identité TLS/URL : nom de domaine (proxy entreprise) ou IP publique.
+fp_cert_identity() {
+  if [ -n "${PUBLIC_HOSTNAME:-}" ] && ! _fp_is_placeholder_host "$PUBLIC_HOSTNAME"; then
+    echo "$PUBLIC_HOSTNAME"
+    return 0
+  fi
+  fp_resolve_public_host 2>/dev/null || echo "127.0.0.1"
+}
+
+_fp_cert_san_contains_identity() {
+  local cert="$1" identity="$2"
+  _fp_cert_san_contains_ip "$cert" "$identity"
+}

@@ -102,4 +102,20 @@ else
 fi
 
 [ "$me_email" = "$EMAIL" ] || echo "[misp-reset] WARN — email API ($me_email) != attendu ($EMAIL)"
+
+echo "[misp-reset] URL publique MISP (proxy nginx)..."
+if docker exec "$CONTAINER" test -f /scripts/misp-configure-public-url.sh 2>/dev/null; then
+  if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$ROOT/scripts/lib/host-ip.sh"
+    fp_load_env_public_host 2>/dev/null || true
+  fi
+  _host="${PUBLIC_HOSTNAME:-${PUBLIC_HOST:-$(fp_resolve_public_host 2>/dev/null || echo "localhost")}}"
+  export MISP_PUBLIC_BASE_URL="${MISP_PUBLIC_BASE_URL:-https://${_host}/misp}"
+  docker exec -e "MISP_PUBLIC_BASE_URL=${MISP_PUBLIC_BASE_URL}" "$CONTAINER" \
+    /scripts/misp-configure-public-url.sh 2>/dev/null \
+    && echo "[misp-reset] MISP.baseurl → ${MISP_PUBLIC_BASE_URL}" \
+    || echo "[misp-reset] WARN — configure-public-url partiel"
+fi
+
 echo "[misp-reset] Terminé — $EMAIL / (MISP_ADMIN_PASSWORD dans .env)"

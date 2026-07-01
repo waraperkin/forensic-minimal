@@ -698,7 +698,7 @@ services:
     container_name: forensic-misp
     restart: unless-stopped
     environment:
-      - BASE_URL=${MISP_PUBLIC_BASE_URL:-https://localhost/misp/}
+      - BASE_URL=${MISP_PUBLIC_BASE_URL:-https://localhost/misp}
       - DISABLE_SSL_REDIRECT=true
       - PHP_SESSION_COOKIE_SECURE=true
       - PHP_SESSION_COOKIE_SAMESITE=Lax
@@ -1093,7 +1093,7 @@ services:
       - UPLOAD_MAX_FILES=${UPLOAD_MAX_FILES}
       - UPLOAD_MAX_SIZE_BYTES=${UPLOAD_MAX_SIZE_BYTES}
       - SECRET_KEY=${CERT_PORTAL_SECRET}
-      - IT_PORTAL_URL=http://localhost/it/
+      - IT_PORTAL_URL=https://${PUBLIC_HOST:-localhost}/it/
       - NODE_ENV=production
       - PORT=3000
     ports:

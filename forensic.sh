@@ -33,17 +33,17 @@ step(){ echo -e "\n${BLUE}━━━ $* ━━━${NC}"; }
 #  Point d'entrée : ./forensic.sh tls  (ou appelé depuis pre_start)
 # ──────────────────────────────────────────────────────────────
 setup_tls() {
-  # Détection automatique de l'IP publique (AWS IMDS, routable, fallback locale)
-  local IP
-  IP=$(fp_detect_public_host 2>/dev/null || true)
-  if [ -z "$IP" ] || [ "$IP" = "127.0.0.1" ]; then
-    IP=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+  # Identité publique : PUBLIC_HOSTNAME (domaine) ou IP (AWS IMDS / routable)
+  local IDENTITY
+  IDENTITY=$(fp_cert_identity 2>/dev/null || true)
+  if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "127.0.0.1" ]; then
+    IDENTITY=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
   fi
-  if [ -z "$IP" ]; then
-    err "[TLS] Impossible de détecter l'IP (fp_detect_public_host / hostname -I)"
+  if [ -z "$IDENTITY" ]; then
+    err "[TLS] Impossible de détecter l'hôte (fp_cert_identity / hostname -I)"
     return 1
   fi
-  echo "[TLS] IP détectée : $IP"
+  echo "[TLS] Hôte détecté : $IDENTITY"
 
   if [ ! -f "$DIR/nginx/certs/ca/ca.crt" ]; then
     echo "[TLS] CA interne absente — génération..."
@@ -56,18 +56,18 @@ setup_tls() {
   if [ ! -f "$DIR/nginx/certs/server/server.crt" ] \
     || [ ! -f "$DIR/nginx/certs/server/server.key" ]; then
     need_server_cert=1
-  elif ! _fp_cert_san_contains_ip "$DIR/nginx/certs/server/server.crt" "$IP"; then
-    echo "[TLS] Certificat serveur SAN ≠ $IP — régénération..."
+  elif ! _fp_cert_san_contains_identity "$DIR/nginx/certs/server/server.crt" "$IDENTITY"; then
+    echo "[TLS] Certificat serveur SAN ≠ $IDENTITY — régénération..."
     need_server_cert=1
   fi
   if [ "$need_server_cert" -eq 1 ]; then
-    echo "[TLS] Génération certificat serveur pour $IP..."
-    bash "$DIR/scripts/generate_server_cert.sh" "$IP"
+    echo "[TLS] Génération certificat serveur pour $IDENTITY..."
+    bash "$DIR/scripts/generate_server_cert.sh" "$IDENTITY"
   else
-    echo "[TLS] Certificat serveur déjà présent (SAN=$IP)."
+    echo "[TLS] Certificat serveur déjà présent (SAN=$IDENTITY)."
   fi
 
-  echo "[TLS] Mise à jour des config.json avec soc_base_url=https://$IP"
+  echo "[TLS] Mise à jour des config.json avec soc_base_url=https://$IDENTITY"
   _tls_update_config_json() {
     local cfg="$1"
     if [ ! -f "$cfg" ]; then
@@ -75,10 +75,10 @@ setup_tls() {
       return 0
     fi
     if command -v jq >/dev/null 2>&1; then
-      jq --arg url "https://${IP}" '.soc_base_url = $url' "$cfg" > "${cfg}.tmp"
+      jq --arg url "https://${IDENTITY}" '.soc_base_url = $url' "$cfg" > "${cfg}.tmp"
       mv "${cfg}.tmp" "$cfg"
     else
-      python3 - "$cfg" "$IP" <<'PY'
+      python3 - "$cfg" "$IDENTITY" <<'PY'
 import json, sys
 path, ip = sys.argv[1], sys.argv[2]
 with open(path, encoding="utf-8") as f:
@@ -94,10 +94,10 @@ PY
   _tls_update_config_json "$DIR/portal-it/public/config.json"
 
   echo "[TLS] Mise à jour nginx (server_name catch-all + maps Grafana)..."
-  _fp_patch_nginx_server_name "$DIR/config/nginx/conf.d/forensic.conf" "$IP"
-  _fp_patch_nginx_grafana_maps "$DIR/config/nginx/conf.d/forensic.conf" "$IP"
+  _fp_patch_nginx_server_name "$DIR/config/nginx/conf.d/forensic.conf" "$IDENTITY"
+  _fp_patch_nginx_grafana_maps "$DIR/config/nginx/conf.d/forensic.conf" "$IDENTITY"
   if [ -f "$DIR/nginx/nginx.conf" ]; then
-    sed -i "s/^[[:space:]]*# server_name .*/# server_name ${IP};/" "$DIR/nginx/nginx.conf" 2>/dev/null || true
+    sed -i "s/^[[:space:]]*# server_name .*/# server_name ${IDENTITY};/" "$DIR/nginx/nginx.conf" 2>/dev/null || true
   fi
 
   echo "[TLS] Redémarrage Nginx + portails CERT/IT..."
@@ -115,16 +115,16 @@ PY
   docker exec forensic-nginx nginx -s reload 2>/dev/null || true
 
   echo "[TLS] Validation du certificat..."
-  if curl -vk --max-time 15 "https://${IP}/login.html" >/dev/null 2>&1; then
+  if curl -vk --max-time 15 "https://${IDENTITY}/login.html" >/dev/null 2>&1; then
     echo "[TLS] OK — TLS opérationnel."
     return 0
   fi
-  curl -vk --max-time 15 "https://${IP}/login.html" 2>&1 | tail -30 || true
-  if curl -sfk --max-time 15 "https://${IP}/login.html" >/dev/null 2>&1; then
+  curl -vk --max-time 15 "https://${IDENTITY}/login.html" 2>&1 | tail -30 || true
+  if curl -sfk --max-time 15 "https://${IDENTITY}/login.html" >/dev/null 2>&1; then
     echo "[TLS] OK — TLS opérationnel (certificat auto-signé — confiance CA locale requise pour curl -f)."
     return 0
   fi
-  err "[TLS] Échec validation HTTPS sur https://${IP}/"
+  err "[TLS] Échec validation HTTPS sur https://${IDENTITY}/"
   return 1
 }
 
@@ -1197,6 +1197,8 @@ full_start() {
   # Reset MISP en arrière-plan (60s délai pour init complète)
   info "Reset MISP credentials (arrière-plan, 60s)..."
   (sleep 60; bash "$DIR/scripts/misp-init.sh" >> "$DIR/logs/misp-init.log" 2>&1; echo "[misp] reset terminé" >> "$DIR/logs/misp-init.log") &
+  # Aligner MISP.baseurl dès que le conteneur répond (en plus du reset admin différé)
+  (sleep 90; bash "$DIR/scripts/misp-configure-host.sh" >> "$DIR/logs/misp-init.log" 2>&1 || true) &
   ok "Phase 5 OK"
 
   # ── Phase 6: Portails + Nginx + Portainer ────────────────────
@@ -1204,7 +1206,11 @@ full_start() {
   docker compose up -d --build ingest-worker 2>/dev/null || $UP ingest-worker
   $UP cert-portal it-portal
   sleep 8
-  if [ "${FP_FULL_ORCHESTRATOR:-0}" = "1" ] && [ -x "$DIR/scripts/helk_velociraptor_master_setup.sh" ]; then
+  if [ "${FP_SKIP_SIDECARS:-0}" != "1" ] && [ -x "$DIR/scripts/setup-sidecars.sh" ]; then
+    step "6a/8 Sidecars HELK / Velociraptor (avant Nginx)"
+    bash "$DIR/scripts/setup-sidecars.sh" 2>&1 \
+      | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" || warn "HELK/VR setup partiel"
+  elif [ "${FP_FULL_ORCHESTRATOR:-0}" = "1" ] && [ -x "$DIR/scripts/helk_velociraptor_master_setup.sh" ]; then
     step "6a/8 Sidecars HELK / Velociraptor (avant Nginx)"
     bash "$DIR/scripts/helk_velociraptor_master_setup.sh" 2>&1 \
       | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" || warn "HELK/VR setup partiel"
