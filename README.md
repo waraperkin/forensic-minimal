@@ -16,11 +16,10 @@ cd forensic-minimal
 ./forensic.sh -full-start
 ```
 
-À l’issue d’un `-full-start` réussi :
+À l’issue d’un `-full-start` réussi, **aucune étape manuelle** : bootstrap IP, TLS, MISP/HELK/VR, nginx et vérification sont automatiques.
 
-- **11/11 services** remontés dans `/api/health/global`
-- Vérification automatique : `scripts/verify-platform-ready.sh` (portail + outils HTTPS)
-- **TLS**, secrets et réseaux créés automatiquement (bootstrap machine vierge)
+- **Accès** : `https://<IP-publique>/` (affiché en fin de script)
+- **11/11 services** vérifiés automatiquement (`verify-platform-ready` intégré au `-full-start`)
 - **OpenSearch Dashboards** : dashboards SIEM/TI/Observability importés
 - **700+ règles** de détection et monitors d’alerting
 - **Portails CERT/IT** opérationnels pour l’ingestion et les pivots cross-tool
@@ -332,14 +331,17 @@ docker logs velociraptor-server --tail 30 2>/dev/null || true
 Par défaut la plateforme utilise **`https://<IP-publique>/`** (pas le DNS EC2). Le bootstrap détecte l'IP via IMDS AWS.
 
 ```bash
-./forensic.sh urls                    # affiche l'IP détectée
-bash scripts/post-start-align.sh      # aligne MISP/HELK/VR + pages d'identité
-bash scripts/print-paloalto-allowlist-guide.sh   # guide IT / firewall
+git clone git@github.com:waraperkin/forensic-minimal.git
+cd forensic-minimal
+./forensic.sh -full-start
+# Security Group AWS : TCP 80 + 443 ouverts
 ```
+
+C'est tout. Pas de `post-start-align`, `git pull` ni reload nginx manuels.
 
 ### Pages d'identification (crawlers URL filtering)
 
-Après `post-start-align`, ces URLs sont servies sans authentification :
+Après `-full-start`, ces URLs sont servies automatiquement :
 
 | URL | Rôle |
 |-----|------|
@@ -409,16 +411,16 @@ bash scripts/test_host_ip.sh
 python3 scripts/test_bootstrap_env_host.py
 bash scripts/test_nginx_config.sh
 bash scripts/test_bootstrap_fresh_install.sh   # simule une install fraîche (IP fictive)
+bash scripts/test_bootstrap_prepare_host.sh  # IP + fichiers nginx (sans Docker)
 bash scripts/test_proxy_subpath_config.sh    # HELK/MISP/VR proxy (anti redirect loop)
 bash scripts/test_tools_access.sh              # MISP / HELK / VR / santé (VM démarrée)
 bash scripts/verify-platform-ready.sh          # portail + 11 outils via HTTPS (VM démarrée)
 ```
 
-En cas d’échec après `-full-start` :
+En cas d’échec du `-full-start` :
 
 ```bash
-bash scripts/post-start-align.sh
-bash scripts/verify-platform-ready.sh
+./forensic.sh -full-start   # relancer (idempotent)
 ```
 
 ### Tests intégrés au full-start
@@ -471,7 +473,7 @@ python3 scripts/opensearch_siem_full_verify.py
 | MISP login boucle / CSRF | `bash scripts/misp-configure-host.sh` puis recharger `/misp/` |
 | HELK ou Velociraptor 502 | `bash scripts/setup-sidecars.sh` puis `docker compose up -d --force-recreate nginx` |
 | Velociraptor redirect vers mauvaise IP | `PUBLIC_HOST=<ip> bash velociraptor/scripts/generate-config.sh` puis recréer sidecar VR |
-| HELK / VR boucle de redirection | `bash scripts/post-start-align.sh` — URLs alignées sur l'**IP** |
+| HELK / VR boucle de redirection | Relancer `./forensic.sh -full-start` |
 | MISP « ERR_NAME_NOT_RESOLVED https » | `bash scripts/misp-configure-host.sh` |
 | Palo Alto bloque l'IP (Uncategorized) | `bash scripts/print-paloalto-allowlist-guide.sh` |
 | Proxy entreprise bloque l'IP | Custom URL category PA **ou** `PUBLIC_HOSTNAME` + `setup-public-access.sh` |

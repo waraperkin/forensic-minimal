@@ -51,8 +51,7 @@ cat <<EOF
    C) Security Policy temporaire
       Autoriser destination ${IP} TCP/443 pour profil « SOC-Analysts »
 
-5) RÉGÉNÉRER les pages d'identité
-   bash scripts/setup-site-identity.sh
-   bash scripts/post-start-align.sh
+5) RÉGÉNÉRER (normalement automatique via ./forensic.sh -full-start)
+   bash scripts/print-paloalto-allowlist-guide.sh
 
 EOF

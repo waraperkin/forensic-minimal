@@ -71,5 +71,5 @@ if [ "$fail" -eq 0 ]; then
   exit 0
 fi
 
-echo "❌ Échecs détectés — exécuter : bash scripts/post-start-align.sh && bash scripts/verify-platform-ready.sh" >&2
+echo "❌ Échecs détectés — relancer ./forensic.sh -full-start (voir logs/forensic_start.log)" >&2
 exit 1

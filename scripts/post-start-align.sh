@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Alignement post-démarrage : IP publique, MISP/HELK/VR, nginx, identité site.
+# Alignement post-démarrage — appelé automatiquement par ./forensic.sh -full-start (ne pas lancer manuellement).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -20,12 +20,11 @@ export MISP_PUBLIC_BASE_URL="$(fp_misp_public_base_url 2>/dev/null || echo "http
 log() { echo "[post-start] $*"; }
 
 log "Mode accès IP — hôte : $HOST"
-log "MISP_PUBLIC_BASE_URL=${MISP_PUBLIC_BASE_URL}"
-log "HELK_KIBANA_PUBLIC_URL=${HELK_KIBANA_PUBLIC_URL}"
 
-# Pages publiques + redirect DNS EC2 → IP
-bash "$ROOT/scripts/setup-site-identity.sh" 2>/dev/null && log "Identité site (robots.txt, site-info.html)" || log "WARN setup-site-identity"
-bash "$ROOT/scripts/generate-nginx-access-snippet.sh" 2>/dev/null && log "Snippet redirect DNS EC2 → IP" || log "WARN generate-nginx-access-snippet"
+if [ "${FP_SKIP_PREPARE:-0}" != "1" ]; then
+  bash "$ROOT/scripts/setup-site-identity.sh" 2>/dev/null && log "Identité site OK" || log "WARN setup-site-identity"
+  bash "$ROOT/scripts/generate-nginx-access-snippet.sh" 2>/dev/null && log "Redirect DNS EC2 → IP OK" || log "WARN generate-nginx-access-snippet"
+fi
 
 # MISP — attendre HTTP puis aligner baseurl + credentials
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^forensic-misp$'; then
@@ -48,16 +47,16 @@ else
   log "WARN forensic-misp absent"
 fi
 
-# Sidecars HELK / VR
+# Sidecars HELK / VR (recrée config VR + Kibana PUBLICBASEURL)
 if [ "${FP_SKIP_SIDECARS:-0}" != "1" ] && [ -x "$ROOT/scripts/setup-sidecars.sh" ]; then
   bash "$ROOT/scripts/setup-sidecars.sh" >> "${FP_LOG_START:-$ROOT/logs/forensic_start.log}" 2>&1 \
     && log "Sidecars HELK/VR OK" \
     || log "WARN setup-sidecars partiel"
 fi
 
-docker compose up -d helk-bridge velociraptor-bridge nginx cert-portal it-portal 2>/dev/null \
-  && docker exec forensic-nginx nginx -s reload 2>/dev/null \
-  && log "Nginx rechargé" \
-  || log "WARN reload nginx"
+docker compose up -d --force-recreate helk-bridge velociraptor-bridge nginx 2>/dev/null \
+  || docker compose up -d helk-bridge velociraptor-bridge nginx 2>/dev/null \
+  || true
+docker exec forensic-nginx nginx -s reload 2>/dev/null && log "Nginx rechargé" || log "WARN reload nginx"
 
-log "Alignement post-démarrage terminé — accéder via https://${HOST}/"
+log "Finalisation terminée — https://${HOST}/"

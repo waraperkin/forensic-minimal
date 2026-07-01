@@ -22,6 +22,13 @@ elif [ -f "$(dirname "${BASH_SOURCE[0]}")/host-ip.sh" ]; then
   # shellcheck source=/dev/null
   . "$(dirname "${BASH_SOURCE[0]}")/host-ip.sh"
 fi
+if [ -n "${DIR:-}" ] && [ -f "${DIR}/scripts/lib/platform-host.sh" ]; then
+  # shellcheck source=/dev/null
+  . "${DIR}/scripts/lib/platform-host.sh"
+elif [ -f "$(dirname "${BASH_SOURCE[0]}")/platform-host.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$(dirname "${BASH_SOURCE[0]}")/platform-host.sh"
+fi
 
 # Hérite des couleurs et helpers de forensic.sh (info/ok/warn/err/step).
 # Si appelé en standalone, on fournit des fallbacks.
@@ -1270,6 +1277,11 @@ fp_auto_repair_loop() {
       return 1
     fi
 
+    if [ "$attempt" -ge 2 ] && command -v fp_finalize_platform_access >/dev/null 2>&1; then
+      warn "Application correctif : alignement IP / MISP / HELK / VR / nginx"
+      fp_finalize_platform_access || true
+    fi
+
     # Application du correctif selon le hint
     case "$FP_DIAG_HINT" in
       network_label|network_subnet)
@@ -1743,7 +1755,7 @@ _fp_ensure_runtime_host_config() {
 
 _fp_bootstrap_generate_configs() {
   local root="${DIR:-.}" ip cfg
-  ip=$(fp_resolve_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  ip=$(fp_url_identity 2>/dev/null || fp_detect_public_ip 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
   if [ -x "$root/scripts/generate-timesketch-conf.sh" ]; then
     bash "$root/scripts/generate-timesketch-conf.sh" >> "$FP_LOG_INSTALL" 2>&1 \
       && ok "timesketch.conf généré" \
@@ -1769,6 +1781,10 @@ PY
     _fp_patch_nginx_grafana_maps "$root/config/nginx/conf.d/forensic.conf" "$ip"
   fi
   _fp_bootstrap_patch_helk_lab_configs "$ip"
+  if command -v fp_prepare_platform_host >/dev/null 2>&1; then
+    fp_prepare_platform_host && ok "Pages site + nginx access (IP $ip)" \
+      || warn "fp_prepare_platform_host partiel — voir logs/forensic_install.log"
+  fi
   ok "Portails config.json + nginx + timesketch + HELK lab → $ip"
 }
 
@@ -1795,7 +1811,7 @@ _fp_bootstrap_cert_dirs() {
 
 _fp_bootstrap_generate_tls() {
   local root="${DIR:-.}" ip rc=0 need_server=0
-  ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  ip=$(fp_cert_identity 2>/dev/null || fp_detect_public_ip 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 
   if [ ! -f "$root/nginx/certs/ca/ca.crt" ] || [ ! -f "$root/nginx/certs/ca/ca.key" ]; then
     info "Génération CA interne (openssl)..."
