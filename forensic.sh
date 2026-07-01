@@ -986,7 +986,7 @@ full_start_orchestrator() {
   START_WARN=()
 
   local ip
-  ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
+  ip=$(fp_url_identity 2>/dev/null || fp_detect_public_ip 2>/dev/null || fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
   [ -n "$ip" ] && export FP_ORCH_BASE_URL="https://${ip}"
 
   echo ""
@@ -1053,7 +1053,7 @@ full_start_orchestrator() {
     if bash "$DIR/scripts/verify-platform-ready.sh"; then
       ok "verify-platform-ready : portail et outils OK"
     else
-      warn "verify-platform-ready : échecs — lancer bash scripts/post-start-align.sh"
+      warn "verify-platform-ready : échecs — relancer ./forensic.sh -full-start ou voir logs/forensic_start.log"
       fs_rc=1
     fi
   fi
@@ -1203,11 +1203,6 @@ full_start() {
   $UP thehive-init 2>/dev/null || true
   $UP grafana
   sleep 8
-  # Reset MISP en arrière-plan (60s délai pour init complète)
-  info "Reset MISP credentials (arrière-plan, 60s)..."
-  (sleep 60; bash "$DIR/scripts/misp-init.sh" >> "$DIR/logs/misp-init.log" 2>&1; echo "[misp] reset terminé" >> "$DIR/logs/misp-init.log") &
-  # Aligner MISP.baseurl dès que le conteneur répond (en plus du reset admin différé)
-  (sleep 90; bash "$DIR/scripts/misp-configure-host.sh" >> "$DIR/logs/misp-init.log" 2>&1 || true) &
   ok "Phase 5 OK"
 
   # ── Phase 6: Portails + Nginx + Portainer ────────────────────
@@ -1224,6 +1219,10 @@ full_start() {
     bash "$DIR/scripts/helk_velociraptor_master_setup.sh" 2>&1 \
       | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" || warn "HELK/VR setup partiel"
   fi
+  if command -v fp_prepare_platform_host >/dev/null 2>&1; then
+    fp_prepare_platform_host 2>&1 | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" \
+      || warn "Préparation hôte IP / nginx partielle"
+  fi
   # Nginx résout velociraptor-bridge / helk-bridge au démarrage — les lancer avant nginx
   # même si le setup HELK/VR sidecar a échoué partiellement (ex. port Kafka occupé).
   $UP helk-bridge velociraptor-bridge 2>/dev/null || true
@@ -1237,8 +1236,11 @@ full_start() {
   start_activation_layers
   start_automated_tests
 
-  step "6c/8 Alignement MISP / sidecars / nginx"
-  if [ -x "$DIR/scripts/post-start-align.sh" ]; then
+  step "6c/8 Finalisation accès IP — MISP / HELK / VR / nginx"
+  if command -v fp_finalize_platform_access >/dev/null 2>&1; then
+    fp_finalize_platform_access 2>&1 | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" \
+      || warn "Finalisation plateforme partielle"
+  elif [ -x "$DIR/scripts/post-start-align.sh" ]; then
     bash "$DIR/scripts/post-start-align.sh" 2>&1 \
       | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" || warn "post-start-align partiel"
   fi
@@ -1272,10 +1274,12 @@ full_start() {
 
   # Validation humaine — pas de "OK produit"
   echo ""
-  echo -e "${YELLOW}━━━ VALIDATION HUMAINE REQUISE ━━━${NC}"
-  echo "  • Vérifier les UIs (https://localhost/, /dashboards/, /grafana/, http://localhost:5000/)"
-  echo "  • Logs détaillés : logs/forensic_start.log, logs/forensic_install.log, logs/forensic_network.log"
-  echo "  • Récap idempotent : ./forensic.sh status"
+  echo -e "${YELLOW}━━━ VALIDATION ━━━${NC}"
+  local _access_ip
+  _access_ip=$(fp_url_identity 2>/dev/null || fp_detect_public_ip 2>/dev/null || echo "localhost")
+  echo "  • Accès plateforme : https://${_access_ip}/"
+  echo "  • Logs : logs/forensic_start.log, logs/forensic_install.log"
+  echo "  • Statut : ./forensic.sh status"
   echo ""
   command -v fp_log >/dev/null 2>&1 && fp_log start "===== start terminé : OK=${#START_OK[@]} WARN=${#START_WARN[@]} FAIL=${#START_FAIL[@]} ====="
 
