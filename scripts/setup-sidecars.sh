@@ -59,7 +59,7 @@ fi
 
 step "Stack Velociraptor sidecar"
 cd "$ROOT/velociraptor"
-docker compose -f docker-compose.velociraptor.yml -f docker-compose.external-net.yml up -d --build 2>&1 \
+docker compose -f docker-compose.velociraptor.yml -f docker-compose.external-net.yml up -d --build --force-recreate 2>&1 \
   | tee -a "${FP_LOG_START:-$ROOT/logs/forensic_start.log}" \
   || warn "Velociraptor sidecar partiel"
 

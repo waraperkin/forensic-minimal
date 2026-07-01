@@ -40,17 +40,30 @@ def host_default(k, ip):
         "GRAFANA_CORS_ORIGIN": f"https://{ip},http://{ip},https://localhost,http://localhost",
     }[k]
 lines = path.read_text().splitlines()
-out = []
+existing = {}
+order = []
 for line in lines:
     m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
-    if not m:
-        out.append(line)
-        continue
-    k, v = m.group(1), m.group(2).strip().strip('"').strip("'")
-    if k in HOST_KEYS and (v == "" or v == PLACEHOLDER or PLACEHOLDER in v):
-        out.append(f"{k}={host_default(k, ip)}")
+    if m:
+        existing[m.group(1)] = m.group(2).strip().strip('"').strip("'")
+    order.append(line)
+for k in HOST_KEYS:
+    v = existing.get(k, "")
+    if v == "" or v == PLACEHOLDER or PLACEHOLDER in v:
+        existing[k] = host_default(k, ip)
+out = []
+seen = set()
+for line in order:
+    m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', line)
+    if m and m.group(1) in existing:
+        k = m.group(1)
+        out.append(f"{k}={existing[k]}")
+        seen.add(k)
     else:
         out.append(line)
+for k in HOST_KEYS:
+    if k not in seen:
+        out.append(f"{k}={existing[k]}")
 path.write_text("\n".join(out) + "\n")
 PY
 
