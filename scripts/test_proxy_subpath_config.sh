@@ -65,7 +65,7 @@ assert_norm() {
 assert_misp_url() {
   local label="$1" want="$2"
   local got
-  got=$(PUBLIC_HOSTNAME=lab.example.com fp_misp_public_base_url)
+  got=$(PUBLIC_HOST=203.0.113.50 fp_misp_public_base_url)
   if [ "$got" = "$want" ]; then
     echo "PASS: $label"
   else
@@ -73,8 +73,19 @@ assert_misp_url() {
     fail=1
   fi
 }
+assert_ip_identity() {
+  local got
+  got=$(PUBLIC_HOST=203.0.113.50 PUBLIC_HOSTNAME= fp_url_identity)
+  if [ "$got" = "203.0.113.50" ]; then
+    echo "PASS: fp_url_identity préfère IP"
+  else
+    echo "FAIL: fp_url_identity (got='$got' want IP)" >&2
+    fail=1
+  fi
+}
 assert_norm "fp_normalize_host strip https" "https://ec2.example.com/misp" "ec2.example.com"
-assert_misp_url "fp_misp_public_base_url" "https://lab.example.com/misp"
+assert_misp_url "fp_misp_public_base_url" "https://203.0.113.50/misp"
+assert_ip_identity
 
 echo ""
 [ "$fail" -eq 0 ] && echo "Proxy sous-chemin OK" || exit 1

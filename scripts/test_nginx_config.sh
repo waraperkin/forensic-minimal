@@ -37,8 +37,13 @@ if ! grep -q 'location /helk/kibana {' "$CONF"; then
   fail=1
 fi
 
-if grep -q 'proxy_pass http://\$helk_kibana_upstream/helk/kibana/' "$CONF"; then
-  echo "FAIL: HELK double basePath encore présent" >&2
+if ! grep -q 'location = /site-info.html' "$CONF"; then
+  echo "FAIL: page site-info.html absente" >&2
+  fail=1
+fi
+
+if ! grep -q 'include /etc/nginx/generated/ec2-dns-redirect.conf' "$CONF"; then
+  echo "FAIL: include redirect DNS EC2 absent" >&2
   fail=1
 fi
 

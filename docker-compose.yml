@@ -1178,6 +1178,8 @@ services:
       - ./config/nginx/conf.d/forensic.conf:/etc/nginx/conf.d/default.conf:ro
       - ./config/nginx/snippets/grafana-proxy.conf:/etc/nginx/snippets/grafana-proxy.conf:ro
       - ./config/nginx/snippets/misp-root-paths.conf:/etc/nginx/snippets/misp-root-paths.conf:ro
+      - ./config/nginx/generated:/etc/nginx/generated:ro
+      - ./config/nginx/static:/etc/nginx/static:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - ./config/nginx/ssl/forensic.crt:/etc/nginx/ssl/forensic.crt:ro
       - ./config/nginx/ssl/forensic.key:/etc/nginx/ssl/forensic.key:ro

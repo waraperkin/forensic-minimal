@@ -1466,7 +1466,7 @@ _fp_bootstrap_env_file() {
 _fp_bootstrap_env_complete() {
   local root="${DIR:-.}" ip url_host rc=0
   ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
-  url_host=$(fp_url_identity 2>/dev/null || echo "$ip")
+  url_host=$(fp_detect_public_ip 2>/dev/null || echo "$ip")
   [ -f "$root/.env" ] || { err ".env introuvable"; return 1; }
   if ! command -v python3 >/dev/null 2>&1; then
     err "python3 requis pour le bootstrap .env"
