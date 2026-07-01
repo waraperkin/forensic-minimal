@@ -19,6 +19,7 @@ cd forensic-minimal
 À l’issue d’un `-full-start` réussi :
 
 - **11/11 services** remontés dans `/api/health/global`
+- Vérification automatique : `scripts/verify-platform-ready.sh` (portail + outils HTTPS)
 - **TLS**, secrets et réseaux créés automatiquement (bootstrap machine vierge)
 - **OpenSearch Dashboards** : dashboards SIEM/TI/Observability importés
 - **700+ règles** de détection et monitors d’alerting
@@ -372,6 +373,14 @@ python3 scripts/test_bootstrap_env_host.py
 bash scripts/test_nginx_config.sh
 bash scripts/test_bootstrap_fresh_install.sh   # simule une install fraîche (IP fictive)
 bash scripts/test_tools_access.sh              # MISP / HELK / VR / santé (VM démarrée)
+bash scripts/verify-platform-ready.sh          # portail + 11 outils via HTTPS (VM démarrée)
+```
+
+En cas d’échec après `-full-start` :
+
+```bash
+bash scripts/post-start-align.sh
+bash scripts/verify-platform-ready.sh
 ```
 
 ### Tests intégrés au full-start

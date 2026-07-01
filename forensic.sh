@@ -1048,6 +1048,15 @@ full_start_orchestrator() {
   local fs_rc=$?
 
   command -v fp_full_start_health_global >/dev/null 2>&1 && fp_full_start_health_global || true
+  if [ -x "$DIR/scripts/verify-platform-ready.sh" ]; then
+    step "ORCHESTRATEUR — Vérification portail + outils (HTTPS)"
+    if bash "$DIR/scripts/verify-platform-ready.sh"; then
+      ok "verify-platform-ready : portail et outils OK"
+    else
+      warn "verify-platform-ready : échecs — lancer bash scripts/post-start-align.sh"
+      fs_rc=1
+    fi
+  fi
   command -v fp_full_start_extended_tests >/dev/null 2>&1 && fp_full_start_extended_tests || true
 
   if command -v fp_full_start_final_report >/dev/null 2>&1; then
@@ -1227,6 +1236,12 @@ full_start() {
 
   start_activation_layers
   start_automated_tests
+
+  step "6c/8 Alignement MISP / sidecars / nginx"
+  if [ -x "$DIR/scripts/post-start-align.sh" ]; then
+    bash "$DIR/scripts/post-start-align.sh" 2>&1 \
+      | tee -a "${FP_LOG_START:-$DIR/logs/forensic_start.log}" || warn "post-start-align partiel"
+  fi
 
   # Appliquer les mappings OpenSearch en arrière-plan (30s délai pour init)
   (sleep 30; fix_existing_data >/dev/null 2>&1) &
