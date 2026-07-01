@@ -8,15 +8,16 @@ Plateforme forensic et SOC **clé en main**, pensée pour le lab, la formation e
 
 ## Overview
 
-Forensic Minimal déploie une stack Docker orchestrée par un seul script :
+Forensic Minimal déploie une stack Docker orchestrée par un seul script. **Sur une VM fraîche, seules ces commandes sont nécessaires :**
 
 ```bash
 git clone git@github.com:waraperkin/forensic-minimal.git
+# ou : git clone https://github.com/waraperkin/forensic-minimal.git
 cd forensic-minimal
 ./forensic.sh -full-start
 ```
 
-À l’issue d’un `-full-start` réussi, **aucune étape manuelle** : bootstrap IP, TLS, MISP/HELK/VR, nginx et vérification sont automatiques.
+À l’issue d’un `-full-start` réussi, **aucune étape manuelle** : détection IP AWS, TLS, MISP, HELK, Velociraptor, nginx, identité site (Palo Alto) et vérification des 11 services sont automatiques.
 
 - **Accès** : `https://<IP-publique>/` (affiché en fin de script)
 - **11/11 services** vérifiés automatiquement (`verify-platform-ready` intégré au `-full-start`)
@@ -104,6 +105,7 @@ Sur l’hôte, les ports suivants doivent être libres (ou détenus par cette st
 
 ```bash
 git clone git@github.com:waraperkin/forensic-minimal.git
+# ou : git clone https://github.com/waraperkin/forensic-minimal.git
 cd forensic-minimal
 ```
 
@@ -112,6 +114,8 @@ cd forensic-minimal
 ```bash
 ./forensic.sh -full-start
 ```
+
+C’est tout — pas de `post-start-align`, pas de `nginx reload`, pas d’édition manuelle de `.env`.
 
 Alias équivalents : `./forensic.sh full-start`, `./forensic.sh full`, `./forensic.sh rebuild`.
 
@@ -142,8 +146,9 @@ Procédure recommandée sur une instance **vierge** (Ubuntu 22.04+ ou Debian 12)
 git clone https://github.com/waraperkin/forensic-minimal.git
 cd forensic-minimal
 ./forensic.sh -full-start
-./forensic.sh urls          # affiche l’IP publique et les liens HTTPS
 ```
+
+L’IP publique et les URLs HTTPS sont affichées en fin de script (`./forensic.sh urls` reste disponible ensuite).
 
 **Avant d’ouvrir le navigateur :**
 
