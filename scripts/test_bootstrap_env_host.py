@@ -26,7 +26,7 @@ def should_patch_host_value(key: str, current: str, ip: str) -> str | None:
         defaults = {
             "PUBLIC_HOST": ip,
             "TIMESKETCH_EXTERNAL_URL": f"https://{ip}/timesketch",
-            "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp/",
+            "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp",
             "GRAFANA_ROOT_URL": f"https://{ip}/grafana/",
             "GRAFANA_DOMAIN": ip,
             "GRAFANA_ALLOWED_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",

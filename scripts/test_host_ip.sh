@@ -51,6 +51,10 @@ fi
 PUBLIC_HOST= FP_PUBLIC_HOST= out="$(fp_detect_public_host || true)"
 assert_ipv4 "fp_detect_public_host" "$out"
 
+# Normalisation URL
+assert_eq "fp_normalize_host strip https" "$(fp_normalize_host 'https://ec2.example.com/path')" "ec2.example.com"
+assert_eq "fp_misp_public_base_url" "$(PUBLIC_HOSTNAME=lab.test fp_misp_public_base_url)" "https://lab.test/misp"
+
 echo ""
 echo "Résultat: $pass pass, $fail fail"
 [ "$fail" -eq 0 ]

@@ -93,6 +93,7 @@ services:
       - SERVER_NAME=helk-kibana
       - SERVER_BASEPATH=/helk/kibana
       - SERVER_REWRITEBASEPATH=true
+      - SERVER_PUBLICBASEURL=${HELK_KIBANA_PUBLIC_URL:-}
     ports:
       - "15601:5601"
     networks:

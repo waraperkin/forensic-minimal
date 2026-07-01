@@ -1464,17 +1464,19 @@ _fp_bootstrap_env_file() {
 
 # Remplit TOUTES les variables critiques vides + valide qu'aucune n'est vide.
 _fp_bootstrap_env_complete() {
-  local root="${DIR:-.}" ip rc=0
+  local root="${DIR:-.}" ip url_host rc=0
   ip=$(fp_detect_public_host 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  url_host=$(fp_url_identity 2>/dev/null || echo "$ip")
   [ -f "$root/.env" ] || { err ".env introuvable"; return 1; }
   if ! command -v python3 >/dev/null 2>&1; then
     err "python3 requis pour le bootstrap .env"
     return 1
   fi
-  python3 - "$root/.env" "$ip" <<'PY'
+  python3 - "$root/.env" "$ip" "$url_host" <<'PY'
 import re, secrets, uuid, base64, sys, pathlib
 path = pathlib.Path(sys.argv[1])
 ip = sys.argv[2]
+url_host = sys.argv[3] if len(sys.argv) > 3 else ip
 lines = path.read_text(encoding="utf-8").splitlines()
 
 PLACEHOLDER_HOST = "10.78.0.9"
@@ -1488,7 +1490,7 @@ def host_default(k: str, ip: str) -> str:
     return {
         "PUBLIC_HOST": ip,
         "TIMESKETCH_EXTERNAL_URL": f"https://{ip}/timesketch",
-        "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp/",
+        "MISP_PUBLIC_BASE_URL": f"https://{ip}/misp",
         "GRAFANA_ROOT_URL": f"https://{ip}/grafana/",
         "GRAFANA_DOMAIN": ip,
         "GRAFANA_ALLOWED_ORIGINS": f"https://{ip},http://{ip},https://localhost,http://localhost",
@@ -1561,7 +1563,7 @@ for line in lines:
         existing[m.group(1)] = parse_val(m.group(2))
     order.append(line)
 
-host = (existing.get("PUBLIC_HOSTNAME") or "").strip() or ip
+host = (existing.get("PUBLIC_HOSTNAME") or "").strip() or url_host or ip
 
 DEFAULTS = {
     "POSTGRES_USER": "forensic",
@@ -1579,7 +1581,7 @@ DEFAULTS = {
     "VELOCIRAPTOR_ADMIN_PASSWORD": "F0r3ns1c_VR_2024!",
     "PUBLIC_HOST": host,
     "TIMESKETCH_EXTERNAL_URL": f"https://{host}/timesketch",
-    "MISP_PUBLIC_BASE_URL": f"https://{host}/misp/",
+    "MISP_PUBLIC_BASE_URL": f"https://{host}/misp",
     "GRAFANA_ROOT_URL": f"https://{host}/grafana/",
     "GRAFANA_DOMAIN": host,
     "GRAFANA_ALLOWED_ORIGINS": f"https://{host},http://{host},https://localhost,http://localhost",

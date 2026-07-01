@@ -32,8 +32,13 @@ if ! grep -q 'set \$vr_bridge_upstream' "$CONF"; then
   fail=1
 fi
 
-if ! grep -q 'location = /helk {' "$CONF"; then
-  echo "FAIL: redirect /helk → /helk/kibana/ absent" >&2
+if ! grep -q 'location /helk/kibana {' "$CONF"; then
+  echo "FAIL: HELK Kibana proxy pattern (OSD-style) absent" >&2
+  fail=1
+fi
+
+if grep -q 'proxy_pass http://\$helk_kibana_upstream/helk/kibana/' "$CONF"; then
+  echo "FAIL: HELK double basePath encore présent" >&2
   fail=1
 fi
 

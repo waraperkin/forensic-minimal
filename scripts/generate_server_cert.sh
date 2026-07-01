@@ -21,7 +21,7 @@ fi
 
 EXTRA_IP=""
 if _fp_is_hostname "$IDENTITY" 2>/dev/null; then
-  EXTRA_IP=$(fp_detect_public_host 2>/dev/null || true)
+  EXTRA_IP=$(fp_detect_public_ip 2>/dev/null || true)
   _fp_is_ipv4 "$EXTRA_IP" || EXTRA_IP=""
 fi
 
@@ -60,6 +60,8 @@ EOF
     echo "IP.1 = ${EXTRA_IP}" >> nginx/certs/server/server.ext
   fi
 else
+  aws_dns=$(_fp_aws_public_hostname 2>/dev/null || true)
+  aws_dns=$(fp_normalize_host "$aws_dns" 2>/dev/null || true)
   cat > nginx/certs/server/server.ext <<EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
@@ -71,6 +73,9 @@ subjectAltName = @alt_names
 IP.1 = ${IDENTITY}
 DNS.1 = localhost
 EOF
+  if [ -n "$aws_dns" ] && _fp_is_hostname "$aws_dns" 2>/dev/null && [ "$aws_dns" != "localhost" ]; then
+    echo "DNS.2 = ${aws_dns}" >> nginx/certs/server/server.ext
+  fi
 fi
 
 openssl req -new -key nginx/certs/server/server.key \

@@ -1076,7 +1076,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - PUBLIC_HOST=${PUBLIC_HOST:-${GRAFANA_DOMAIN:-localhost}}
-      - MISP_PUBLIC_BASE_URL=${MISP_PUBLIC_BASE_URL:-https://localhost/misp/}
+      - MISP_PUBLIC_BASE_URL=${MISP_PUBLIC_BASE_URL:-https://localhost/misp}
       - TIMESKETCH_EXTERNAL_URL=${TIMESKETCH_EXTERNAL_URL:-https://localhost/timesketch}
       - THEHIVE_URL=http://thehive:9000/thehive
       - MISP_URL=http://misp:80
