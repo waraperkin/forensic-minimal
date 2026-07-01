@@ -1505,30 +1505,6 @@ def should_patch_host(k: str, val: str) -> bool:
         return True
     return False
 
-DEFAULTS = {
-    "POSTGRES_USER": "forensic",
-    "POSTGRES_DB": "forensic",
-    "MINIO_ROOT_USER": "forensicadmin",
-    "MYSQL_DATABASE": "misp",
-    "MYSQL_USER": "misp",
-    "TIMESKETCH_USER": "admin",
-    "RABBITMQ_DEFAULT_USER": "opencti",
-    "RABBITMQ_DEFAULT_VHOST": "opencti",
-    "OPENCTI_ADMIN_EMAIL": "admin@forensic.local",
-    "MISP_ADMIN_EMAIL": "admin@forensic.local",
-    "THEHIVE_ADMIN_LOGIN": "admin",
-    "VELOCIRAPTOR_ADMIN_USER": "admin",
-    "VELOCIRAPTOR_ADMIN_PASSWORD": "F0r3ns1c_VR_2024!",
-    "PUBLIC_HOST": host,
-    "TIMESKETCH_EXTERNAL_URL": f"https://{host}/timesketch",
-    "MISP_PUBLIC_BASE_URL": f"https://{host}/misp/",
-    "GRAFANA_ROOT_URL": f"https://{host}/grafana/",
-    "GRAFANA_DOMAIN": host,
-    "GRAFANA_ALLOWED_ORIGINS": f"https://{host},http://{host},https://localhost,http://localhost",
-    "GRAFANA_CSRF_ORIGINS": f"https://{host},http://{host},https://localhost,http://localhost",
-    "GRAFANA_CORS_ORIGIN": f"https://{host},http://{host},https://localhost,http://localhost",
-}
-
 CRITICAL = [
     "POSTGRES_PASSWORD", "REDIS_PASSWORD",
     "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
@@ -1586,6 +1562,30 @@ for line in lines:
     order.append(line)
 
 host = (existing.get("PUBLIC_HOSTNAME") or "").strip() or ip
+
+DEFAULTS = {
+    "POSTGRES_USER": "forensic",
+    "POSTGRES_DB": "forensic",
+    "MINIO_ROOT_USER": "forensicadmin",
+    "MYSQL_DATABASE": "misp",
+    "MYSQL_USER": "misp",
+    "TIMESKETCH_USER": "admin",
+    "RABBITMQ_DEFAULT_USER": "opencti",
+    "RABBITMQ_DEFAULT_VHOST": "opencti",
+    "OPENCTI_ADMIN_EMAIL": "admin@forensic.local",
+    "MISP_ADMIN_EMAIL": "admin@forensic.local",
+    "THEHIVE_ADMIN_LOGIN": "admin",
+    "VELOCIRAPTOR_ADMIN_USER": "admin",
+    "VELOCIRAPTOR_ADMIN_PASSWORD": "F0r3ns1c_VR_2024!",
+    "PUBLIC_HOST": host,
+    "TIMESKETCH_EXTERNAL_URL": f"https://{host}/timesketch",
+    "MISP_PUBLIC_BASE_URL": f"https://{host}/misp/",
+    "GRAFANA_ROOT_URL": f"https://{host}/grafana/",
+    "GRAFANA_DOMAIN": host,
+    "GRAFANA_ALLOWED_ORIGINS": f"https://{host},http://{host},https://localhost,http://localhost",
+    "GRAFANA_CSRF_ORIGINS": f"https://{host},http://{host},https://localhost,http://localhost",
+    "GRAFANA_CORS_ORIGIN": f"https://{host},http://{host},https://localhost,http://localhost",
+}
 
 # Appliquer defaults + génération secrets pour valeurs vides
 for k, dv in DEFAULTS.items():
