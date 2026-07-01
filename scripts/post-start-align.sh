@@ -39,6 +39,8 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^forensic-misp$'; then
     bash "$ROOT/scripts/misp-configure-host.sh" >> "${FP_LOG_START:-$ROOT/logs/misp-init.log}" 2>&1 \
       && log "MISP.baseurl aligné (IP)" \
       || log "WARN misp-configure-host"
+    docker compose up -d --force-recreate misp 2>/dev/null || true
+    sleep 15
     bash "$ROOT/scripts/misp-init.sh" >> "${FP_LOG_START:-$ROOT/logs/misp-init.log}" 2>&1 \
       && log "MISP admin OK" \
       || log "WARN misp-init partiel"

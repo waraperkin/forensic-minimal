@@ -8,7 +8,7 @@ if [ -f "$ROOT/scripts/lib/host-ip.sh" ]; then
   . "$ROOT/scripts/lib/host-ip.sh"
   fp_load_env_public_host 2>/dev/null || true
 fi
-PUBLIC_HOST="${PUBLIC_HOSTNAME:-${PUBLIC_HOST:-$(fp_url_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")}}"
+PUBLIC_HOST="${PUBLIC_HOST:-$(fp_url_identity 2>/dev/null || fp_detect_public_ip 2>/dev/null || echo "localhost")}"
 PUBLIC_HOST=$(fp_normalize_host "$PUBLIC_HOST" 2>/dev/null || echo "$PUBLIC_HOST")
 DATA_DIR="/data"
 

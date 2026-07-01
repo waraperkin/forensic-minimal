@@ -1715,8 +1715,9 @@ _fp_bootstrap_patch_helk_lab_configs() {
 }
 
 _fp_regenerate_velociraptor_config() {
-  local root="${DIR:-.}" host need=0
-  host=$(fp_cert_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "localhost")
+  local root="${DIR:-.}" host need=0 rc=0
+  host=$(fp_url_identity 2>/dev/null || fp_detect_public_ip 2>/dev/null || echo "localhost")
+  host=$(fp_normalize_host "$host" 2>/dev/null || echo "$host")
   local cfg="$root/velociraptor/config/server.config.yaml"
   if [ ! -f "$cfg" ]; then
     need=1
@@ -1724,23 +1725,57 @@ _fp_regenerate_velociraptor_config() {
     need=1
   elif ! grep -q "$host" "$cfg" 2>/dev/null; then
     need=1
+  elif grep -q ':8001/' "$cfg" 2>/dev/null && [ "${FP_VR_NGINX_ONLY:-1}" = "1" ]; then
+    need=1
   fi
   if [ "$need" -eq 1 ] && [ -x "$root/velociraptor/scripts/generate-config.sh" ]; then
     FP_VR_NGINX_ONLY=1 PUBLIC_HOST="$host" bash "$root/velociraptor/scripts/generate-config.sh" \
       >> "${FP_LOG_INSTALL:-$root/logs/forensic_install.log}" 2>&1 \
       && ok "Velociraptor config régénérée ($host)" \
-      || warn "Velociraptor config — voir logs/forensic_install.log"
+      || { warn "Velociraptor config — échec (voir logs/forensic_install.log)"; rc=1; }
   fi
+  if [ -f "$cfg" ] && grep -q '10\.78\.0\.9' "$cfg" 2>/dev/null; then
+    err "Velociraptor server.config.yaml contient encore l'IP lab 10.78.0.9"
+    return 1
+  fi
+  return "$rc"
+}
+
+_fp_bootstrap_validate_host_configs() {
+  local root="${DIR:-.}" host ip rc=0
+  host=$(fp_url_identity 2>/dev/null || echo "")
+  ip=$(fp_detect_public_ip 2>/dev/null || echo "")
+  if [ -f "$root/velociraptor/config/server.config.yaml" ] \
+    && grep -q '10\.78\.0\.9' "$root/velociraptor/config/server.config.yaml" 2>/dev/null; then
+    err "Config Velociraptor non alignée sur l'IP publique (10.78.0.9 résiduel)"
+    rc=1
+  fi
+  if [ -n "$host" ] && [ -f "$root/.env" ] && grep -q '^PUBLIC_HOST=10\.78\.0\.9' "$root/.env" 2>/dev/null; then
+    err ".env PUBLIC_HOST encore sur IP lab 10.78.0.9"
+    rc=1
+  fi
+  if [ -n "$host" ] && ! grep -q "$host" "$root/.env" 2>/dev/null; then
+    warn ".env PUBLIC_HOST ≠ hôte détecté ($host)"
+  fi
+  if [ ! -f "$root/config/nginx/static/site-info.html" ]; then
+    warn "config/nginx/static/site-info.html absent — fp_prepare_platform_host"
+  fi
+  [ "$rc" -eq 0 ] && ok "Validation configs hôte (IP ${host:-$ip})"
+  return "$rc"
 }
 
 _fp_ensure_runtime_host_config() {
   local root="${DIR:-.}" ip
-  ip=$(fp_cert_identity 2>/dev/null || fp_resolve_public_host 2>/dev/null || echo "127.0.0.1")
+  ip=$(fp_url_identity 2>/dev/null || fp_detect_public_ip 2>/dev/null || echo "127.0.0.1")
+  ip=$(fp_normalize_host "$ip" 2>/dev/null || echo "$ip")
   _fp_bootstrap_env_complete 2>/dev/null || true
+  if command -v fp_prepare_platform_host >/dev/null 2>&1; then
+    fp_prepare_platform_host 2>/dev/null || true
+  fi
   if [ -x "$root/scripts/generate-timesketch-conf.sh" ]; then
     bash "$root/scripts/generate-timesketch-conf.sh" >> "${FP_LOG_INSTALL:-$root/logs/forensic_install.log}" 2>&1 || true
   fi
-  _fp_regenerate_velociraptor_config
+  _fp_regenerate_velociraptor_config || return 1
   for cfg in "$root/portal-cert/public/config.json" "$root/portal-it/public/config.json"; do
     [ -f "$cfg" ] || continue
     if grep -q '10\.78\.0\.9' "$cfg" 2>/dev/null || grep -q '"soc_base_url": ""' "$cfg" 2>/dev/null; then
@@ -1750,6 +1785,7 @@ _fp_ensure_runtime_host_config() {
     fi
   done
   _fp_bootstrap_patch_helk_lab_configs "$ip"
+  _fp_bootstrap_validate_host_configs || return 1
   return 0
 }
 
@@ -1785,6 +1821,7 @@ PY
     fp_prepare_platform_host && ok "Pages site + nginx access (IP $ip)" \
       || warn "fp_prepare_platform_host partiel — voir logs/forensic_install.log"
   fi
+  _fp_regenerate_velociraptor_config || warn "Velociraptor regen partielle"
   ok "Portails config.json + nginx + timesketch + HELK lab → $ip"
 }
 
@@ -1922,7 +1959,9 @@ fp_bootstrap_fresh_machine() {
   _fp_bootstrap_sync_cert_links
   _fp_bootstrap_cert_permissions
   _fp_bootstrap_verify_nginx_tls || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
+  _fp_regenerate_velociraptor_config || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
   _fp_bootstrap_generate_configs
+  _fp_bootstrap_validate_host_configs || { [ "$_had_e" -eq 1 ] && set -e; return 1; }
   if command -v docker >/dev/null 2>&1; then
     fp_ensure_docker >/dev/null 2>&1 || true
     _fp_bootstrap_external_networks || warn "Réseaux externes partiels (helk_net / velociraptor_net)"

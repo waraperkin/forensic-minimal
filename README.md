@@ -337,7 +337,7 @@ cd forensic-minimal
 # Security Group AWS : TCP 80 + 443 ouverts
 ```
 
-C'est tout. Pas de `post-start-align`, `git pull` ni reload nginx manuels.
+> **Note :** le dépôt `fp-final2` (référence lab interne) n'est pas modifié — `forensic-minimal` reprend le modèle « une IP partout » (comme `10.78.0.9` au lab) avec détection AWS automatique.
 
 ### Pages d'identification (crawlers URL filtering)
 
@@ -411,7 +411,7 @@ bash scripts/test_host_ip.sh
 python3 scripts/test_bootstrap_env_host.py
 bash scripts/test_nginx_config.sh
 bash scripts/test_bootstrap_fresh_install.sh   # simule une install fraîche (IP fictive)
-bash scripts/test_bootstrap_prepare_host.sh  # IP + fichiers nginx (sans Docker)
+bash scripts/test_no_lab_ip_residual.sh           # pas d'IP lab 10.78.0.9 dans configs critiques
 bash scripts/test_proxy_subpath_config.sh    # HELK/MISP/VR proxy (anti redirect loop)
 bash scripts/test_tools_access.sh              # MISP / HELK / VR / santé (VM démarrée)
 bash scripts/verify-platform-ready.sh          # portail + 11 outils via HTTPS (VM démarrée)
